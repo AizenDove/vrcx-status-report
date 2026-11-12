@@ -1,0 +1,13 @@
+# Generated reports contain your friends' names and IDs - never commit them
+friends_report.html
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
