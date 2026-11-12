@@ -4,6 +4,8 @@ A friends-list cleanup tool that runs **inside [VRCX](https://github.com/vrcx-te
 
 Find friends who have sat on **Orange (Ask Me)** or **Red (Do Not Disturb)** for months, or who haven't been online in a long time, and remove them in bulk, with protections against removing the wrong people and a record of everyone removed.
 
+![Status Report panel inside VRCX](docs/screenshots/report.png)
+
 > **Not affiliated with VRChat or the VRCX team.** This is a community script that uses VRCX's custom-script support. Unfriending is permanent; read [Safety](#safety) before unfriending anyone.
 
 ---
@@ -11,6 +13,7 @@ Find friends who have sat on **Orange (Ask Me)** or **Red (Do Not Disturb)** for
 ## Contents
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Quick start](#quick-start)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
@@ -43,6 +46,19 @@ Also:
 - **Nothing is selected until you tick it**, and favorites and anyone online right now can't be ticked unless you turn that off.
 - **5-step confirmation** before any unfriending, with a speed choice and automatic slow-down if VRChat asks for it.
 - **Always current:** data reloads when you open the panel or change a filter.
+- **Hide names** button blurs every friend name, so you can share screenshots safely.
+
+## Screenshots
+
+All friend names are blurred with the panel's **Hide names** button.
+
+| Filter: Orange, same status 6+ months | Ticking people to remove |
+|---|---|
+| ![Filter by status and how long it has stayed the same](docs/screenshots/filter.png) | ![Selecting people with checkboxes; favorites and online friends are protected](docs/screenshots/selecting.png) |
+| **Confirmation 1 of 5** | **Confirmation 2 of 5: check the list** |
+| ![First confirmation step](docs/screenshots/confirm-step1.png) | ![Second confirmation step listing who will be removed](docs/screenshots/confirm-step2.png) |
+| **Timeline** | **Removed** |
+| ![Status history as coloured bars](docs/screenshots/timeline.png) | ![Everyone removed, with Send friend request](docs/screenshots/removed.png) |
 
 ## Quick start
 
@@ -109,7 +125,7 @@ Pull or download the latest version, run the install script again (or copy `cust
 
 ## Usage
 
-Open **Status Report** in the VRCX sidebar or press **Ctrl+Shift+O**. **Esc** or **Close** closes the panel; **Refresh** reloads the data.
+Open **Status Report** in the VRCX sidebar or press **Ctrl+Shift+O**. **Esc** or **Close** closes the panel; **Refresh** reloads the data; **Hide names** blurs every name (click again to show them).
 
 ### Report
 

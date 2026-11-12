@@ -232,6 +232,9 @@ input[type=checkbox]{accent-color:var(--danger)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
 .legend span{display:flex;gap:5px;align-items:center}
 .sw{width:14px;height:9px;border-radius:2px;display:inline-block}
+/* Hide names: blur every friend name, for sharing screenshots */
+.hide-names .name a,.hide-names .names,.hide-names #plog,.hide-names #pt,.hide-names .tip b,.hide-names .nm{filter:blur(7px);user-select:none}
+.btn.on{background:var(--fg);color:var(--bg)}
 .tip{position:fixed;z-index:10;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:12px;display:none;max-width:280px}
 .log{font-size:12px;color:var(--muted);max-height:220px;overflow:auto;background:var(--card);border-radius:8px;padding:8px 10px}
 </style>
@@ -240,7 +243,7 @@ input[type=checkbox]{accent-color:var(--danger)}
   <div class="top">
     <div class="title">
       <div class="tabs"><button class="tab on" data-tab="report">Report</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="removed">Removed</button></div>
-      <span><button class="btn" data-act="refresh">Refresh</button> <button class="btn" data-act="close">Close</button></span>
+      <span><button class="btn" data-act="hidenames" title="Blur all names, e.g. for screenshots">Hide names</button> <button class="btn" data-act="refresh">Refresh</button> <button class="btn" data-act="close">Close</button></span>
     </div>
     <div class="sub" id="sub"></div>
     <div id="reportTop">
@@ -371,7 +374,7 @@ input[type=checkbox]{accent-color:var(--danger)}
     }
     async function reAdd(r, btn) {
         if (!window.webApiService?.execute) return;
-        modal(`<h3>Send a friend request to ${esc(r.name)}?</h3><p>They'll get a normal friend request and have to accept it before you're friends again.</p>
+        modal(`<h3>Send a friend request to <span class="nm">${esc(r.name)}</span>?</h3><p>They'll get a normal friend request and have to accept it before you're friends again.</p>
             <div class="actions"><button class="btn" id="no">Cancel</button><button class="btn" id="yes">Send request</button></div>`);
         const ok = await new Promise((res) => { $('#no').onclick = () => res(false); $('#yes').onclick = () => res(true); });
         closeModal();
@@ -690,6 +693,11 @@ input[type=checkbox]{accent-color:var(--danger)}
     overlay.onclick = (e) => { if (e.target === overlay) hide(); };
     root.querySelector('[data-act=close]').onclick = hide;
     root.querySelector('[data-act=refresh]').onclick = () => refresh();
+    root.querySelector('[data-act=hidenames]').onclick = (e) => {
+        const on = root.querySelector('.panel').classList.toggle('hide-names');
+        e.currentTarget.classList.toggle('on', on);
+        e.currentTarget.textContent = on ? 'Names hidden' : 'Hide names';
+    };
     root.querySelector('[data-act=unfriend]').onclick = confirmAndRun;
     root.querySelector('[data-act=selall]').onclick = () => { (currentRows() || []).forEach((f) => selected.add(f.id)); draw(); };
     root.querySelector('[data-act=selnone]').onclick = () => { (currentRows() || []).forEach((f) => selected.delete(f.id)); draw(); };
