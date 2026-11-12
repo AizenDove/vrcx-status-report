@@ -1,10 +1,11 @@
 /*
- * VRCX Status Report + Cleanup
+ * VRCX Status Report
  *
  * Adds a "Status Report" entry to VRCX's left sidebar (next to Tools). It opens a panel with:
- *   - Report:  how long each friend has had their status, and when they were last online
- *   - Cleanup: filter friends by last-online and unchanged-orange time, then unfriend the
- *              selection after 5 separate confirmations
+ *   - Report:   filter friends by status, how long it's stayed the same, and last online,
+ *               then unfriend the selection after 5 separate confirmations
+ *   - Timeline: each friend's status history as coloured bars
+ *   - Removed:  everyone no longer a friend, with "send friend request" to undo
  *
  * Install: copy to %AppData%\VRCX\custom.js and restart VRCX.  Shortcut: Ctrl+Shift+O.
  *
@@ -147,20 +148,12 @@
         const h = Math.floor(ms / 3600000); return h ? p(h, 'hour') : 'under an hour';
     }
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    // what the dot/status shows: "offline" unless they're online now, then their status colour
-    const shown = (f) => (f.online ? (LABEL[f.status] && f.status !== 'unknown' ? f.status : 'active') : 'offline');
+    // colours follow the status people have SET in VRChat, whether they're online or not
     function statusPhrase(f) {
-        if (!f.online) {
-            // Cleanup filters on the status they have set, so show it there
-            if (tab === 'cleanup' && f.status !== 'unknown') {
-                const dur = f.sinceMs < 0 ? '' : ` for ${f.atLeast ? 'at least ' : ''}${ago(f.sinceMs)}`;
-                return `Offline <span class="muted">· set to ${esc(LABEL[f.status] || f.status)}${dur}</span>`;
-            }
-            return 'Offline';
-        }
-        if (f.status === 'unknown') return 'Online';
-        if (f.sinceMs < 0) return esc(LABEL[f.status] || f.status);
-        return `${esc(LABEL[f.status] || f.status)} for ${f.atLeast ? 'at least ' : ''}<b>${ago(f.sinceMs)}</b>`;
+        const off = f.online ? '' : ' <span class="muted">· offline</span>';
+        if (f.status === 'unknown') return `<span class="muted">Unknown</span>${off}`;
+        if (f.sinceMs < 0) return esc(LABEL[f.status] || f.status) + off;
+        return `${esc(LABEL[f.status] || f.status)} for ${f.atLeast ? 'at least ' : ''}<b>${ago(f.sinceMs)}</b>${off}`;
     }
     function seenPhrase(f) {
         if (f.online) return '<span class="ok">Online now</span>';
@@ -173,8 +166,6 @@
     host.id = HOST_ID;
     document.body.appendChild(host);
     const root = host.attachShadow({ mode: 'open' }); // keeps VRCX's styles and ours apart
-    const monthOpts = (anyLabel) => `<option value="0">${anyLabel}</option><option value="1">1+ months</option>
-        <option value="3">3+ months</option><option value="6">6+ months</option><option value="12">12+ months</option>`;
     root.innerHTML = `
 <style>
 :host{--bg:#141417;--card:#1d1d22;--fg:#ececf1;--muted:#9a9aa8;--line:#2e2e37;--chip:#26262e;--warn:#ff6b6b;--ok:#4ade80;--danger:#dc2626;all:initial}
@@ -208,7 +199,8 @@ input,select{font-size:13px;padding:5px 9px;border-radius:7px;border:1px solid v
 input[type=text]{flex:1;min-width:140px}
 input[type=checkbox]{accent-color:var(--danger)}
 .body{overflow:auto;flex:1}
-.row{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
+.row{display:grid;grid-template-columns:26px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
+.row.r5{grid-template-columns:26px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
 .head{position:sticky;top:0;z-index:1;background:var(--bg);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-top:0}
 .head div{cursor:pointer;user-select:none}
 .name{display:flex;gap:8px;align-items:center;min-width:0}
@@ -247,7 +239,7 @@ input[type=checkbox]{accent-color:var(--danger)}
 <div class="overlay"><div class="panel">
   <div class="top">
     <div class="title">
-      <div class="tabs"><button class="tab on" data-tab="report">Report</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="cleanup">Cleanup</button><button class="tab" data-tab="removed">Removed</button></div>
+      <div class="tabs"><button class="tab on" data-tab="report">Report</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="removed">Removed</button></div>
       <span><button class="btn" data-act="refresh">Refresh</button> <button class="btn" data-act="close">Close</button></span>
     </div>
     <div class="sub" id="sub"></div>
@@ -255,11 +247,20 @@ input[type=checkbox]{accent-color:var(--danger)}
       <div class="stats" id="stats"></div>
       <div class="controls"><span id="chips"></span>
         <select id="seen">
-          <option value="0">Any last-online</option><option value="1">Not online in 1+ months</option>
-          <option value="3">Not online in 3+ months</option><option value="6">Not online in 6+ months</option>
-          <option value="12">Not online in 12+ months</option>
+          <option value="0">Last online: any time</option><option value="1">Not online 1+ months</option>
+          <option value="3">Not online 3+ months</option><option value="6">Not online 6+ months</option>
+          <option value="12">Not online 12+ months</option>
         </select>
-        <input type="text" id="q" placeholder="Search name or status text"></div>
+        <select id="same" title="How long their current status has stayed the same">
+          <option value="0">Status unchanged: any time</option><option value="1">Same status 1+ months</option>
+          <option value="3">Same status 3+ months</option><option value="6">Same status 6+ months</option>
+          <option value="12">Same status 12+ months</option>
+        </select>
+        <input type="text" id="q" placeholder="Search name"></div>
+      <div class="controls" id="skipRow" style="margin-top:8px">
+        <label><input type="checkbox" id="skipFav" checked> Never select favorites</label>
+        <label><input type="checkbox" id="skipOnline" checked> Never select anyone online now</label>
+      </div>
       <div class="legend" id="legend" hidden>
         <span><i class="sw" style="background:${COLORS.active}"></i>Green (Online)</span>
         <span><i class="sw" style="background:${COLORS['join me']}"></i>Blue (Join Me)</span>
@@ -276,15 +277,6 @@ input[type=checkbox]{accent-color:var(--danger)}
         <input type="text" id="rq" placeholder="Search name"></div>
       <div class="sub" style="margin:8px 0 0">From VRCX's Friend Log: everyone who stopped being your friend (whether you or they removed it) and isn't a friend again. To undo, send a friend request; they have to accept it.</div>
     </div>
-    <div id="cleanTop" hidden>
-      <div class="controls">
-        <label>Last online <select id="cSeen">${monthOpts('Any')}</select></label>
-        <label>Unchanged orange for <select id="cOrange">${monthOpts('Any status')}</select></label>
-        <label><input type="checkbox" id="cFav" checked> Skip favorites</label>
-        <label><input type="checkbox" id="cOnline" checked> Skip anyone online now</label>
-      </div>
-      <div class="sub" id="cHint" style="margin:8px 0 0"></div>
-    </div>
   </div>
   <div class="body" id="list"><div class="msg">Loading...</div></div>
   <div class="bar" id="cBar">
@@ -300,12 +292,11 @@ input[type=checkbox]{accent-color:var(--danger)}
     const overlay = $('.overlay');
     let F = [], R = [], start = null, loaded = false, tab = 'report';
     let filter = 'all', sortKey = 'sinceMs', sortDir = -1;
-    let cSort = 'seenMs', cDir = -1;
-    const selected = new Set(), deselected = new Set();
+    const selected = new Set(); // opt-in: nobody is ticked until you tick them
     let running = false;
 
     function hide() { if (!running) overlay.classList.remove('open'); }
-    async function show() { overlay.classList.add('open'); await refresh(loaded); }
+    async function show() { if (!running) selected.clear(); overlay.classList.add('open'); await refresh(loaded); }
     // Re-reads VRCX's data. quiet = keep the current list on screen while loading (no flicker).
     // Clicks during a reload are merged into one more reload afterwards.
     let loading = null, again = false;
@@ -334,15 +325,16 @@ input[type=checkbox]{accent-color:var(--danger)}
     }
     function setTab(t) {
         tab = t;
+        if (!running) selected.clear(); // each tab starts with nobody selected
         root.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-        $('#reportTop').hidden = t === 'cleanup' || t === 'removed';
+        $('#reportTop').hidden = t === 'removed';
         $('#removedTop').hidden = t !== 'removed';
-        $('#cleanTop').hidden = t !== 'cleanup';
+        $('#skipRow').hidden = t !== 'report';
         $('#legend').hidden = t !== 'timeline';
         $('#cBar').hidden = t === 'timeline' || t === 'removed';
         draw();
     }
-    const draw = () => (tab === 'report' ? renderReport() : tab === 'timeline' ? renderTimeline() : tab === 'removed' ? renderRemoved() : renderCleanup());
+    const draw = () => (tab === 'timeline' ? renderTimeline() : tab === 'removed' ? renderRemoved() : renderReport());
 
     // ---------- removed tab (the "bin") ----------
     const store = {
@@ -356,21 +348,21 @@ input[type=checkbox]{accent-color:var(--danger)}
         const rows = R.filter((r) => (!days || (r.at && now - r.at < days * DAY))
             && (!onlyMine || mine.has(r.id)) && (!q || r.name.toLowerCase().includes(q)));
         const L = $('#list'); L.className = 'body'; L.innerHTML = '';
-        const head = document.createElement('div'); head.className = 'row head';
+        const head = document.createElement('div'); head.className = 'row head r5';
         head.innerHTML = `<div></div><div>Name · ${rows.length} shown</div><div>Removed</div><div>How</div><div></div>`;
         L.appendChild(head);
         const frag = document.createDocumentFragment();
         for (const r of rows) {
-            const row = document.createElement('div'); row.className = 'row';
+            const row = document.createElement('div'); row.className = 'row r5';
             const nm = document.createElement('div'); nm.className = 'name';
-            nm.innerHTML = '<span class="dot" style="background:#8a8a96"></span><a title="Open profile"></a>';
+            nm.innerHTML = '<a title="Open profile"></a>';
             nm.querySelector('a').textContent = r.name; nm.querySelector('a').onclick = () => openUser(r.id);
             const btn = document.createElement('button'); btn.className = 'btn';
             if (requested.has(r.id)) { btn.textContent = 'Request sent'; btn.disabled = true; } else { btn.textContent = 'Send friend request'; btn.onclick = () => reAdd(r, btn); }
             const c4 = document.createElement('div'); c4.appendChild(btn);
             row.append(document.createElement('div'), nm);
             row.insertAdjacentHTML('beforeend', `<div>${r.at ? `${esc(fmtDate(r.at))} <span class="muted">(${ago(now - r.at)} ago)</span>` : '?'}</div>
-                <div class="muted">${mine.has(r.id) ? 'Status Report cleanup' : 'Unfriended'}</div>`);
+                <div class="muted">${mine.has(r.id) ? 'Status Report' : 'Unfriended'}</div>`);
             row.appendChild(c4);
             frag.appendChild(row);
         }
@@ -481,10 +473,10 @@ input[type=checkbox]{accent-color:var(--danger)}
     // ---------- report tab ----------
     function drawStats() {
         const stats = [
-            [F.filter((f) => f.online).length, 'online now', () => { filter = 'online'; $('#seen').value = '0'; }],
-            [F.filter((f) => !f.online).length, 'offline now', () => { filter = 'offline'; $('#seen').value = '0'; }],
-            [F.filter((f) => f.seenMs > 6 * MONTH).length, 'not online in 6+ months', () => { filter = 'all'; $('#seen').value = '6'; }],
-            [F.filter((f) => f.seenMs > 12 * MONTH).length, 'not online in 12+ months', () => { filter = 'all'; $('#seen').value = '12'; }],
+            [F.filter((f) => f.status === 'ask me').length, 'orange (Ask Me)', () => { filter = 'ask me'; $('#seen').value = '0'; }],
+            [F.filter((f) => f.status === 'busy').length, 'red (Do Not Disturb)', () => { filter = 'busy'; $('#seen').value = '0'; }],
+            [F.filter((f) => f.seenMs > 6 * MONTH).length, 'not online 6+ months', () => { filter = 'all'; $('#seen').value = '6'; }],
+            [F.filter((f) => f.seenMs > 12 * MONTH).length, 'not online 12+ months', () => { filter = 'all'; $('#seen').value = '12'; }],
         ];
         const box = $('#stats'); box.innerHTML = '';
         for (const [n, label, fn] of stats) {
@@ -495,14 +487,16 @@ input[type=checkbox]{accent-color:var(--danger)}
         }
     }
     function drawChips() {
-        // counts follow the last-online and search filters
-        const q = $('#q').value.toLowerCase(), seen = +$('#seen').value;
-        const base = F.filter((f) => (!q || f.name.toLowerCase().includes(q) || f.text.toLowerCase().includes(q)) && (!seen || f.seenMs > seen * MONTH));
+        // counts follow the search and both dropdowns
+        const base = F.filter(passesOther);
         const c = $('#chips'); c.innerHTML = '';
-        for (const s of ['all', 'online', 'active', 'join me', 'ask me', 'busy', 'offline']) {
+        for (const s of ['all', 'join me', 'active', 'ask me', 'busy', 'unknown']) {
+            const n = base.filter((f) => matchesFilter(f, s)).length;
+            if (s === 'unknown' && !n && filter !== 'unknown') continue; // only show Unknown when there is any
             const b = document.createElement('button');
             b.className = 'chip' + (filter === s ? ' on' : '');
-            b.textContent = FILTER_LABEL[s] + ` (${base.filter((f) => matchesFilter(f, s)).length})`;
+            b.innerHTML = (s !== 'all' ? `<span class="dot" style="background:${COLORS[s]};width:8px;height:8px;margin-right:5px"></span>` : '') + `${esc(FILTER_LABEL[s])} (${n})`;
+            b.title = STATUS_NAME[s] || '';
             b.onclick = () => { filter = s; drawChips(); draw(); refresh(true); };
             c.appendChild(b);
         }
@@ -523,42 +517,47 @@ input[type=checkbox]{accent-color:var(--danger)}
     }
     function nameCell(f) {
         const d = document.createElement('div'); d.className = 'name';
-        d.innerHTML = `<span class="dot" style="background:${COLORS[shown(f)] || COLORS.unknown}"></span><a title="Open profile"></a>${f.fav ? '<span class="star" title="Favorite">★</span>' : ''}`;
+        d.innerHTML = `<a title="Open profile"></a>${f.fav ? '<span class="star" title="Favorite">★</span>' : ''}`;
         const a = d.querySelector('a'); a.textContent = f.name; a.onclick = () => openUser(f.id);
         return d;
     }
-    const FILTER_LABEL = { all: 'All', online: 'Online', active: 'Green', 'join me': 'Blue', 'ask me': 'Orange', busy: 'Red', offline: 'Offline' };
-    function matchesFilter(f, s) {
-        if (s === 'all') return true;
-        if (s === 'online') return f.online;
-        return shown(f) === s;
+    const FILTER_LABEL = { all: 'All', active: 'Green', 'join me': 'Blue', 'ask me': 'Orange', busy: 'Red', unknown: 'Unknown' };
+    const STATUS_NAME = { active: 'Online', 'join me': 'Join Me', 'ask me': 'Ask Me', busy: 'Do Not Disturb', unknown: 'No status recorded' };
+    function matchesFilter(f, s) { return s === 'all' || f.status === s; }
+    const offlineMonths = () => +$('#seen').value;
+    const sameMonths = () => +$('#same').value;
+    // search + last-online + same-status filters (everything except the status button)
+    function passesOther(f) {
+        const q = $('#q').value.toLowerCase(), seen = offlineMonths(), same = sameMonths();
+        return (!q || f.name.toLowerCase().includes(q))
+            && (!seen || f.seenMs > seen * MONTH)
+            && (!same || f.sinceMs > same * MONTH);
     }
-    function reportMatches() {
-        const q = $('#q').value.toLowerCase(), seen = +$('#seen').value;
-        return F.filter((f) => matchesFilter(f, filter)
-            && (!q || f.name.toLowerCase().includes(q) || f.text.toLowerCase().includes(q))
-            && (!seen || f.seenMs > seen * MONTH));
-    }
-    // the Report tab only allows selecting once some filter narrows the list (never "everyone")
-    const reportFiltered = () => filter !== 'all' || $('#seen').value !== '0' || !!$('#q').value.trim();
+    function reportMatches() { return F.filter((f) => matchesFilter(f, filter) && passesOther(f)); }
+    // protected rows: shown, but never ticked or unfriended
+    const skipped = (f) => ($('#skipFav').checked && f.fav) || ($('#skipOnline').checked && f.online);
+    // only allow selecting once some filter narrows the list (never "everyone")
+    const reportFiltered = () => filter !== 'all' || offlineMonths() > 0 || sameMonths() > 0 || !!$('#q').value.trim();
     function buildRow(f, selectable) {
         const r = document.createElement('div'); r.className = 'row';
         const c0 = document.createElement('div');
-        if (selectable) {
-            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !deselected.has(f.id);
-            cb.onchange = () => { cb.checked ? deselected.delete(f.id) : deselected.add(f.id); updateCount(); };
+        if (selectable && skipped(f)) {
+            c0.innerHTML = '<span class="muted" title="Protected by the \'Never select\' options">–</span>';
+        } else if (selectable) {
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = selected.has(f.id);
+            cb.onchange = () => { cb.checked ? selected.add(f.id) : selected.delete(f.id); updateCount(); };
             c0.appendChild(cb);
         }
         r.appendChild(c0);
         r.appendChild(nameCell(f));
-        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div><div class="txt" title="${esc(f.text)}">${esc(f.text)}</div>`);
+        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>`);
         return r;
     }
     function renderReport() {
         const rows = reportMatches().sort(sorter(sortKey, sortDir));
         const selectable = reportFiltered();
         const L = $('#list'); L.className = 'body'; L.innerHTML = '';
-        L.appendChild(header([['name', 'Name'], ['sinceMs', 'Status'], ['seenMs', 'Last online'], ['text', `Status text · ${rows.length} shown`]],
+        L.appendChild(header([['name', `Name · ${rows.length} shown`], ['sinceMs', 'Status'], ['seenMs', 'Last online']],
             sortKey, sortDir, (k) => { sortDir = sortKey === k ? -sortDir : (k === 'name' || k === 'text' ? 1 : -1); sortKey = k; renderReport(); },
             document.createElement('div')));
         const frag = document.createDocumentFragment();
@@ -568,60 +567,24 @@ input[type=checkbox]{accent-color:var(--danger)}
         updateCount();
     }
 
-    // ---------- cleanup tab ----------
-    function cleanupMatches() {
-        const seenM = +$('#cSeen').value, orangeM = +$('#cOrange').value;
-        if (!seenM && !orangeM) return null; // refuse "everyone"
-        return F.filter((f) =>
-            (!seenM || f.seenMs > seenM * MONTH)
-            && (!orangeM || (f.status === 'ask me' && f.sinceMs > orangeM * MONTH))
-            && !($('#cFav').checked && f.fav)
-            && !($('#cOnline').checked && f.online));
-    }
     function filterText() {
         const parts = [];
-        if (tab === 'report') {
-            const seen = +$('#seen').value, q = $('#q').value.trim();
-            if (filter !== 'all') parts.push(FILTER_LABEL[filter] || filter);
-            if (seen) parts.push(`not online for ${seen}+ months`);
-            if (q) parts.push(`matching "${q}"`);
-        } else {
-            const seenM = +$('#cSeen').value, orangeM = +$('#cOrange').value;
-            if (seenM) parts.push(`not online for ${seenM}+ months`);
-            if (orangeM) parts.push(`orange, unchanged for ${orangeM}+ months`);
-        }
+        const seen = offlineMonths(), same = sameMonths(), q = $('#q').value.trim();
+        if (filter !== 'all') parts.push(`status ${FILTER_LABEL[filter] || filter}`);
+        if (same) parts.push(`same status for ${same}+ months`);
+        if (seen) parts.push(`not online for ${seen}+ months`);
+        if (q) parts.push(`matching "${q}"`);
         return parts.join(' AND ');
     }
     // rows the selection bar acts on: whatever the current tab shows (null = no filter yet)
     function currentRows() {
-        if (tab === 'report') return reportFiltered() ? reportMatches() : null;
-        return cleanupMatches();
+        if (tab !== 'report' || !reportFiltered()) return null;
+        return reportMatches().filter((f) => !skipped(f));
     }
-    function chosen() { return (currentRows() || []).filter((f) => !deselected.has(f.id)); }
-    function renderCleanup() {
-        const L = $('#list'); L.className = 'body cleanup'; L.innerHTML = '';
-        const m = cleanupMatches();
-        if (!m) {
-            $('#cHint').textContent = 'Pick at least one filter. Matches are pre-selected; untick anyone you want to keep.';
-            L.innerHTML = '<div class="msg">Choose a "Last online" and/or "Unchanged orange" filter above.</div>';
-            updateCount(); return;
-        }
-        $('#cHint').textContent = `Showing friends who are ${filterText()}. Untick anyone you want to keep.` +
-            (start ? ` Status times only go back to ${fmtDate(start)}.` : '');
-        m.sort(sorter(cSort, cDir));
-        L.appendChild(header([['name', 'Name'], ['sinceMs', 'Status'], ['seenMs', 'Last online'], ['text', 'Status text']],
-            cSort, cDir, (k) => { cDir = cSort === k ? -cDir : (k === 'name' || k === 'text' ? 1 : -1); cSort = k; renderCleanup(); },
-            document.createElement('div')));
-        const frag = document.createDocumentFragment();
-        for (const f of m) frag.appendChild(buildRow(f, true));
-        L.appendChild(frag);
-        if (!m.length) L.insertAdjacentHTML('beforeend', '<div class="msg">Nobody matches these filters.</div>');
-        updateCount();
-    }
+    function chosen() { return (currentRows() || []).filter((f) => selected.has(f.id)); }
     function updateCount() {
         const m = currentRows(), n = chosen().length;
-        $('#cCount').textContent = m ? `${n} of ${m.length} selected`
-            : tab === 'report' ? 'Pick a status, last-online or search filter to select people' : 'Pick a filter to select people';
+        $('#cCount').textContent = m ? `${n} of ${m.length} selected` : 'Pick a status, a month filter or a search to select people';
         $('[data-act=unfriend]').disabled = !n || running;
         $('[data-act=unfriend]').textContent = n ? `Unfriend ${n} selected...` : 'Unfriend selected...';
     }
@@ -728,15 +691,16 @@ input[type=checkbox]{accent-color:var(--danger)}
     root.querySelector('[data-act=close]').onclick = hide;
     root.querySelector('[data-act=refresh]').onclick = () => refresh();
     root.querySelector('[data-act=unfriend]').onclick = confirmAndRun;
-    root.querySelector('[data-act=selall]').onclick = () => { (currentRows() || []).forEach((f) => deselected.delete(f.id)); draw(); };
-    root.querySelector('[data-act=selnone]').onclick = () => { (currentRows() || []).forEach((f) => deselected.add(f.id)); draw(); };
+    root.querySelector('[data-act=selall]').onclick = () => { (currentRows() || []).forEach((f) => selected.add(f.id)); draw(); };
+    root.querySelector('[data-act=selnone]').onclick = () => { (currentRows() || []).forEach((f) => selected.delete(f.id)); draw(); };
     root.querySelectorAll('.tab').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
     $('#q').oninput = () => { drawChips(); draw(); };
     $('#rq').oninput = () => renderRemoved();
     $('#rWhen').onchange = () => renderRemoved();
     $('#rMine').onchange = () => renderRemoved();
     $('#seen').onchange = () => { drawChips(); draw(); refresh(true); };
-    ['#cSeen', '#cOrange', '#cFav', '#cOnline'].forEach((s) => ($(s).onchange = () => { renderCleanup(); refresh(true); }));
+    $('#same').onchange = () => { drawChips(); draw(); refresh(true); };
+    ['#skipFav', '#skipOnline'].forEach((s) => ($(s).onchange = () => renderReport()));
     state.key = (e) => {
         if (e.ctrlKey && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); overlay.classList.contains('open') ? hide() : show(); }
         else if (e.key === 'Escape' && overlay.classList.contains('open') && !$('#modal').classList.contains('open')) hide();
