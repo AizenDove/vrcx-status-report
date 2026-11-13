@@ -35,7 +35,7 @@ The panel has three tabs:
 
 | Tab | What it does |
 |---|---|
-| **Report** | Lists every friend with the status they have set, how long it has stayed the same, and when they were last online. Filter by status, by **same status for** 1+ / 3+ / 6+ / 12+ months and by **not online for** 1+ / 3+ / 6+ / 12+ months, then tick people and unfriend them. |
+| **Report** | Lists every friend with the status they have set, how long it has stayed the same, and when they were last online. Filter by status, by **same status for** 1+ / 3+ / 6+ / 12+ months and with a **not online for** slider (any range from 1 to 12+ months), then tick people and unfriend them. |
 | **Timeline** | One coloured bar per friend showing their status history over time. Hover for exact dates; a *Most of the time* column sums each person up (e.g. *Orange 71% · Green 29%*). |
 | **Removed** | Everyone who is no longer your friend, taken from VRCX's Friend Log, with a **Send friend request** button to undo a removal. |
 
@@ -44,18 +44,18 @@ Also:
 - **Built into VRCX:** opens from a **Status Report** entry in VRCX's left sidebar (below **Tools**) or with **Ctrl+Shift+O**. It matches VRCX's look and works in any VRCX language.
 - **Filters by the status people have set:** Blue, Green, Orange or Red, whether they're online or offline. VRChat keeps a status set while someone is offline.
 - **Nothing is selected until you tick it**, and favorites and anyone online right now can't be ticked unless you turn that off.
-- **5-step confirmation** before any unfriending, with a speed choice and automatic slow-down if VRChat asks for it.
+- **4-step confirmation** before any unfriending, ending with typing the number of people, with a speed choice and automatic slow-down if VRChat asks for it.
 - **Always current:** data reloads when you open the panel or change a filter.
-- **Hide names** button blurs every friend name, so you can share screenshots safely.
+- **Time together and joins** for every friend, from VRCX's game log: the same numbers VRCX shows on a profile.
 
 ## Screenshots
 
-All friend names are blurred with the panel's **Hide names** button.
+Friend names are blurred in these screenshots.
 
 | Filter: Orange, same status 6+ months | Ticking people to remove |
 |---|---|
 | ![Filter by status and how long it has stayed the same](docs/screenshots/filter.png) | ![Selecting people with checkboxes; favorites and online friends are protected](docs/screenshots/selecting.png) |
-| **Confirmation 1 of 5** | **Confirmation 2 of 5: check the list** |
+| **Confirmation: summary** | **Confirmation: check the list** |
 | ![First confirmation step](docs/screenshots/confirm-step1.png) | ![Second confirmation step listing who will be removed](docs/screenshots/confirm-step2.png) |
 | **Timeline** | **Removed** |
 | ![Status history as coloured bars](docs/screenshots/timeline.png) | ![Everyone removed, with Send friend request](docs/screenshots/removed.png) |
@@ -67,13 +67,15 @@ To remove everyone who has been **Orange for 6+ months**:
 1. Open **Status Report** in the VRCX sidebar.
 2. Click **Orange**, then set **Same status 6+ months**.
 3. Look through the list and tick the people to remove, or click **Select all** and untick anyone to keep.
-4. Click **Unfriend N selected…** and go through the 5 confirmations.
+4. Click **Unfriend N selected…** and go through the 4 confirmations.
 
 Other useful combinations:
 
 - **Red + Same status 3+ months**
-- **All + Not online 12+ months** (everyone inactive for a year, whatever their status)
-- **Orange + Not online 6+ months**
+- **All + Not online for 12+ months** (everyone inactive for a year, whatever their status)
+- **Orange + Not online for 3–6 months** (drag both slider handles to pick a range)
+- **Orange + Never met** (orange friends you've never been in an instance with)
+- **Orange + Not online for 6+ months**
 
 ## How it works
 
@@ -83,6 +85,7 @@ VRCX loads a file called `custom.js` from its data folder at startup and runs it
 |---|---|
 | Status changes, online/offline events, unfriend log | VRCX's local database (`%AppData%\VRCX\VRCX.sqlite3`), read-only `SELECT` queries |
 | Current status, online state, last login, favorites | VRCX's live friend list (already loaded from VRChat by VRCX) |
+| Time together, joins | VRCX's game log (`gamelog_join_leave`), the same data VRCX uses for a profile's time spent and join count |
 
 The script only talks to VRChat for the two actions you explicitly confirm: **unfriending** and **sending a friend request**. Both go through VRCX's own request service, using your existing VRCX login. The script doesn't read or store passwords or tokens.
 
@@ -125,21 +128,24 @@ Pull or download the latest version, run the install script again (or copy `cust
 
 ## Usage
 
-Open **Status Report** in the VRCX sidebar or press **Ctrl+Shift+O**. **Esc** or **Close** closes the panel; **Refresh** reloads the data; **Hide names** blurs every name (click again to show them).
+Open **Status Report** in the VRCX sidebar or press **Ctrl+Shift+O**. **Esc** or **Close** closes the panel; **Refresh** reloads the data.
 
 ### Report
 
-**Cards** at the top count *orange (Ask Me)*, *red (Do Not Disturb)*, *not online 6+ months* and *not online 12+ months*. Click one to filter to it.
+**Cards** at the top count *orange (Ask Me)*, *red (Do Not Disturb)*, *not online 6+ months* and *not online 12+ months*. Click one to filter to it (the two *not online* cards set the slider for you).
 
-**Filters:**
+The panel fills the VRCX window. All filters live in the **Filters** sidebar on the left; the filters that are on show as **pills** above the list. Click **×** on a pill to remove that filter, or **Reset all** / **Clear all** to start over.
 
-| Control | Options |
+**Filters sidebar:**
+
+| Filter | Options |
 |---|---|
-| Status buttons | All · Blue · Green · Orange · Red. *Unknown* also appears if VRCX has never recorded a status for some friends. Counts follow the other filters. |
-| Same status | Any time, or the same status for 1+ / 3+ / 6+ / 12+ months |
-| Last online | Any time, or not online for 1+ / 3+ / 6+ / 12+ months |
 | Search | Matches display names |
-| Never select favorites / Never select anyone online now | On by default. Those people still appear in the list, but with a dash instead of a checkbox. |
+| Status | All · Blue · Green · Orange · Red, with counts. *Unknown* also appears if VRCX has never recorded a status for some friends. Counts follow the other filters. |
+| Status unchanged for | Any, or 1+ / 3+ / 6+ / 12+ months |
+| Not online for | Tick the box, then drag the two handles to set a range from **1** to **12+** months, e.g. *3–6 months* or *6+ months*. With the right handle at 12+ there's no upper limit. Unticked means any time. |
+| Time together | Any, Never met, Under 1 h or Under 10 h |
+| Protection: Never select favorites / anyone online now | On by default. Those people still appear in the list, but with a dash instead of a checkbox. |
 
 **Each row shows:**
 
@@ -148,6 +154,8 @@ Open **Status Report** in the VRCX sidebar or press **Ctrl+Shift+O**. **Esc** or
 | Name | Click it to open their VRCX profile. ★ marks a favorite. |
 | Status | *Orange for at least 1 year · offline* |
 | Last online | *Online now*, *Last online 3 months ago*, or *Not seen online since …* |
+| Time together | Total time you've spent in the same instance, e.g. *8h 7m*, or *Never met*. Hover for the last time you were together. |
+| Joins | How many different instances you've been in together |
 
 Click a column header to sort. Sorting by **Status** puts the people who have had the same status longest at the top.
 
@@ -159,8 +167,7 @@ Click a column header to sort. Sorting by **Status** puts the people who have ha
    1. Summary of the filter and count
    2. The full list of names, with warnings for favorites and anyone online in the last 30 days
    3. A reminder that unfriending can't be undone
-   4. Type the exact number of people
-   5. Choose a speed and type **UNFRIEND**
+   4. Choose a speed and type the exact number of people to start
 4. A progress window shows each removal. **Stop** works at any time.
 
 ### Timeline
@@ -197,7 +204,7 @@ Unfriending in VRChat is **permanent**: the only way back is a new friend reques
 - **Opt-in selection:** nobody is ticked until you tick them.
 - **Never selects everyone:** a filter is required before anything can be ticked.
 - **Favorites and anyone online now are protected** by default and can't be ticked.
-- **5 separate confirmations**, including typing the number of people and the word `UNFRIEND`.
+- **4 separate confirmations**, the last one requiring you to type the exact number of people.
 - **Rate-limit aware:** choose *Fast* (no pause, like VRCX's built-in Bulk Unfriend), *Normal* (1 s, default) or *Careful* (4 s). If VRChat replies "too many requests", the run pauses, retries and slows down automatically.
 - **Stop** at any time. Friends already removed stay removed; the rest are untouched.
 - Every removal is logged in VRCX's Friend Log and listed in the **Removed** tab.
@@ -209,6 +216,7 @@ VRChat doesn't publish its API limits and does monitor unusual account activity.
 - **History starts when your VRCX started recording.** If VRCX first saw someone already on a status, the time is shown as "at least …".
 - **VRCX only records while it's running.** A status change made while VRCX is closed is only noticed, and timed, when VRCX next sees that friend. *Last online* also uses VRChat's last-login time from VRCX's friend list, so it's usually accurate even for long absences.
 - **Unknown statuses:** VRChat only reports someone's status while they're online. Friends VRCX has never seen online have no recorded status, but still show up in the *Not online* filters.
+- **Time together only covers what VRCX logged.** The game log is recorded while VRChat and VRCX are both running, from when you started using VRCX. *Never met* means not in the same instance since then, not never.
 - **Friends only.** VRCX doesn't track non-friends, and neither does this script.
 - **Uses VRCX internals** (`custom.js`, its database bridge, its request service, its sidebar markup), not an official plugin API. A VRCX update may break part of the panel until this script is updated; VRCX itself keeps working.
 - **Windows VRCX only.** The Linux build uses a different bridge and is untested.

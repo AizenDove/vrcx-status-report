@@ -3,14 +3,14 @@
  *
  * Adds a "Status Report" entry to VRCX's left sidebar (next to Tools). It opens a panel with:
  *   - Report:   filter friends by status, how long it's stayed the same, and last online,
- *               then unfriend the selection after 5 separate confirmations
+ *               then unfriend the selection after 4 separate confirmations
  *   - Timeline: each friend's status history as coloured bars
  *   - Removed:  everyone no longer a friend, with "send friend request" to undo
  *
  * Install: copy to %AppData%\VRCX\custom.js and restart VRCX.  Shortcut: Ctrl+Shift+O.
  *
  * Reads VRCX's database with SELECT only. The only thing it ever changes is unfriending,
- * and only after the 5 confirmations. Relies on VRCX internals (SQLite.Execute,
+ * and only after the 4 confirmations. Relies on VRCX internals (SQLite.Execute,
  * window.$pinia, window.webApiService, the sidebar markup) that aren't an official API,
  * so a VRCX update may break parts of it.
  */
@@ -102,6 +102,24 @@
             if (!hist.has(uid)) hist.set(uid, []);
             hist.get(uid).push({ t: ts(at), s, prev });
         }
+        // VRCX's game log: one row each time someone joins/leaves the instance you're in.
+        // "time" on the leave row is how long you were together; distinct locations = joins.
+        const agg = `SUM(CASE WHEN typeof(time) IN ('integer','real') THEN time ELSE 0 END), COUNT(DISTINCT location), MAX(created_at)`;
+        const byId = new Map(), byName = new Map();
+        for (const [uid, ms, joins, last] of await sql(`SELECT user_id, ${agg} FROM gamelog_join_leave WHERE user_id IS NOT NULL AND user_id != '' GROUP BY user_id`))
+            byId.set(uid, { ms: Number(ms) || 0, joins: Number(joins) || 0, last: ts(last) || 0 });
+        // older log rows may have only a display name, no user id
+        for (const [dn, ms, joins, last] of await sql(`SELECT display_name, ${agg} FROM gamelog_join_leave WHERE user_id IS NULL OR user_id = '' GROUP BY display_name`))
+            byName.set(dn, { ms: Number(ms) || 0, joins: Number(joins) || 0, last: ts(last) || 0 });
+        const togetherFor = (id, ...names) => {
+            const parts = [byId.get(id), ...new Set(names.filter(Boolean))].map((x) => (typeof x === 'string' ? byName.get(x) : x)).filter(Boolean);
+            const last = Math.max(0, ...parts.map((x) => x.last));
+            return {
+                togetherMs: parts.reduce((a, x) => a + x.ms, 0),
+                joins: parts.reduce((a, x) => a + x.joins, 0),
+                lastTogether: last || null,
+            };
+        };
         const live = liveFriends();
         const now = Date.now();
         const friends = rows.map(([id, name, dbStatus, dbText, since, ev, evAt]) => {
@@ -123,6 +141,7 @@
                 lastEvent: ev,
                 fav: !!entry?.isVIP,
                 hist: hist.get(id) || [],
+                ...togetherFor(id, name, ref.displayName),
             };
         });
         // people VRCX's Friend Log recorded as unfriended (by you or by them) who aren't friends again
@@ -155,6 +174,17 @@
         if (f.sinceMs < 0) return esc(LABEL[f.status] || f.status) + off;
         return `${esc(LABEL[f.status] || f.status)} for ${f.atLeast ? 'at least ' : ''}<b>${ago(f.sinceMs)}</b>${off}`;
     }
+    function fmtTogether(ms) {
+        const m = Math.round(ms / 60000), h = Math.floor(m / 60);
+        if (h >= 100) return `${h}h`;
+        if (h) return `${h}h ${m % 60}m`;
+        return `${m}m`;
+    }
+    function togetherCells(f) {
+        if (!f.joins) return '<div class="muted">Never met</div><div class="muted">0</div>';
+        const title = f.lastTogether ? ` title="Last together ${esc(fmtDate(f.lastTogether))}"` : '';
+        return `<div${title}><b>${fmtTogether(f.togetherMs)}</b></div><div>${f.joins}</div>`;
+    }
     function seenPhrase(f) {
         if (f.online) return '<span class="ok">Online now</span>';
         if (f.seenMs === Infinity) return `<span class="warn">Not seen online${start ? ' since ' + fmtDate(start) : ''}</span>`;
@@ -175,12 +205,39 @@
   border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:13px;cursor:pointer;opacity:.8}
 .fab.show{display:flex}
 .dot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block}
-.overlay{position:fixed;inset:0;z-index:99999;background:#000a;display:none;align-items:center;justify-content:center;padding:24px}
+.overlay{position:fixed;inset:0;z-index:99999;background:#000c;display:none;padding:10px}
 .overlay.open{display:flex}
-.panel{position:relative;background:var(--bg);color:var(--fg);width:min(1150px,100%);height:min(88vh,950px);border-radius:12px;border:1px solid var(--line);
+.panel{position:relative;background:var(--bg);color:var(--fg);width:100%;height:100%;border-radius:12px;border:1px solid var(--line);
   display:flex;flex-direction:column;overflow:hidden;font-size:13.5px;line-height:1.45}
-.top{padding:14px 18px 10px;border-bottom:1px solid var(--line)}
-.title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px}
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.top .sub{flex:1;margin:0}
+.main{flex:1;display:flex;min-height:0}
+.filters{width:280px;flex:none;border-right:1px solid var(--line);overflow:auto;padding:14px 16px 20px;background:#17171b}
+.fhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.fhead b{font-size:14px}
+.link{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12.5px;padding:2px 4px}
+.link:hover{color:var(--fg);text-decoration:underline}
+.filters input[type=text]{width:100%}
+.fsec{margin-top:18px}
+.fsec h4{margin:0 0 8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fsec h4 label{display:flex;gap:7px;align-items:center;cursor:pointer}
+.fsec label.opt{display:flex;gap:8px;align-items:center;color:var(--fg);font-size:13px;margin:6px 0;cursor:pointer}
+.slist{display:flex;flex-direction:column;gap:2px}
+.sitem{display:flex;align-items:center;gap:9px;width:100%;padding:6px 9px;border:0;border-radius:7px;background:none;color:var(--fg);font-size:13px;cursor:pointer;text-align:left}
+.sitem:hover{background:var(--chip)}
+.sitem.on{background:var(--chip);box-shadow:inset 3px 0 0 var(--fg)}
+.sitem .n{margin-left:auto;color:var(--muted);font-size:12px}
+.sitem small{color:var(--muted);font-size:11.5px}
+.seg{display:grid;grid-template-columns:repeat(var(--cols,2),1fr);gap:4px}
+.seg button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:7px;padding:5px 9px;font-size:12.5px;cursor:pointer}
+.seg button:hover{border-color:var(--muted)}
+.seg button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.content{flex:1;display:flex;flex-direction:column;min-width:0}
+.content .stats{padding:12px 16px 0;margin:0}
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;min-height:44px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 11px;font-size:12.5px}
+.pill button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 3px}
+.pill button:hover{color:var(--fg)}
 .tabs{display:flex;gap:4px}
 .tab{background:none;border:0;color:var(--muted);font-size:16px;font-weight:600;padding:4px 10px;border-radius:7px;cursor:pointer}
 .tab.on{color:var(--fg);background:var(--chip)}
@@ -189,9 +246,21 @@
 .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
 .sub{color:var(--muted);font-size:12.5px;margin:3px 0 10px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
-.stat b{display:block;font-size:20px}.stat span{color:var(--muted);font-size:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer;display:flex;align-items:baseline;gap:10px}
+.stat:hover{border-color:var(--muted)}
+.stat b{font-size:20px}.stat span{color:var(--muted);font-size:12px}
 .controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fsec.off .range,.fsec.off .ticks,.fsec.off #offLabel{opacity:.35}
+.range{position:relative;width:100%;height:22px}
+.range .track,.range .fill{position:absolute;top:9px;height:4px;border-radius:2px}
+.range .track{left:0;right:0;background:var(--line)}
+.range .fill{background:var(--fg)}
+.range input{position:absolute;left:0;top:0;width:100%;height:22px;margin:0;background:none;pointer-events:none;-webkit-appearance:none;appearance:none}
+.range input::-webkit-slider-runnable-track{height:22px;background:transparent}
+.range input::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:16px;height:16px;margin-top:3px;border-radius:50%;background:var(--fg);border:2px solid var(--bg);box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.ticks{position:relative;width:100%;height:12px;font-size:10px;color:var(--muted)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+#offLabel{color:var(--fg);text-transform:none;letter-spacing:0;font-size:12.5px}
 .controls label{color:var(--muted);font-size:12.5px;display:flex;gap:6px;align-items:center}
 .chip{border:1px solid var(--line);background:var(--chip);color:var(--fg);border-radius:999px;padding:4px 11px;cursor:pointer;font-size:12.5px}
 .chip.on{background:var(--fg);color:var(--bg)}
@@ -199,7 +268,7 @@ input,select{font-size:13px;padding:5px 9px;border-radius:7px;border:1px solid v
 input[type=text]{flex:1;min-width:140px}
 input[type=checkbox]{accent-color:var(--danger)}
 .body{overflow:auto;flex:1}
-.row{display:grid;grid-template-columns:26px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
+.row{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(0,1.15fr) minmax(0,1fr) minmax(0,.6fr) minmax(0,.4fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
 .row.r5{grid-template-columns:26px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
 .head{position:sticky;top:0;z-index:1;background:var(--bg);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-top:0}
 .head div{cursor:pointer;user-select:none}
@@ -229,63 +298,62 @@ input[type=checkbox]{accent-color:var(--danger)}
 .axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .axis span::before{content:"";position:absolute;left:50%;top:15px;width:1px;height:6px;background:var(--line)}
 .sum{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--fg)}
 .legend span{display:flex;gap:5px;align-items:center}
 .sw{width:14px;height:9px;border-radius:2px;display:inline-block}
-/* Hide names: blur every friend name, for sharing screenshots */
-.hide-names .name a,.hide-names .names,.hide-names #plog,.hide-names #pt,.hide-names .tip b,.hide-names .nm{filter:blur(7px);user-select:none}
-.btn.on{background:var(--fg);color:var(--bg)}
 .tip{position:fixed;z-index:10;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:12px;display:none;max-width:280px}
 .log{font-size:12px;color:var(--muted);max-height:220px;overflow:auto;background:var(--card);border-radius:8px;padding:8px 10px}
 </style>
 <button class="fab" title="Ctrl+Shift+O"><span class="dot" style="background:${COLORS['ask me']}"></span>Status report</button>
 <div class="overlay"><div class="panel">
   <div class="top">
-    <div class="title">
-      <div class="tabs"><button class="tab on" data-tab="report">Report</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="removed">Removed</button></div>
-      <span><button class="btn" data-act="hidenames" title="Blur all names, e.g. for screenshots">Hide names</button> <button class="btn" data-act="refresh">Refresh</button> <button class="btn" data-act="close">Close</button></span>
-    </div>
+    <div class="tabs"><button class="tab on" data-tab="report">Report</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="removed">Removed</button></div>
     <div class="sub" id="sub"></div>
-    <div id="reportTop">
-      <div class="stats" id="stats"></div>
-      <div class="controls"><span id="chips"></span>
-        <select id="seen">
-          <option value="0">Last online: any time</option><option value="1">Not online 1+ months</option>
-          <option value="3">Not online 3+ months</option><option value="6">Not online 6+ months</option>
-          <option value="12">Not online 12+ months</option>
-        </select>
-        <select id="same" title="How long their current status has stayed the same">
-          <option value="0">Status unchanged: any time</option><option value="1">Same status 1+ months</option>
-          <option value="3">Same status 3+ months</option><option value="6">Same status 6+ months</option>
-          <option value="12">Same status 12+ months</option>
-        </select>
-        <input type="text" id="q" placeholder="Search name"></div>
-      <div class="controls" id="skipRow" style="margin-top:8px">
-        <label><input type="checkbox" id="skipFav" checked> Never select favorites</label>
-        <label><input type="checkbox" id="skipOnline" checked> Never select anyone online now</label>
-      </div>
-      <div class="legend" id="legend" hidden>
-        <span><i class="sw" style="background:${COLORS.active}"></i>Green (Online)</span>
-        <span><i class="sw" style="background:${COLORS['join me']}"></i>Blue (Join Me)</span>
-        <span><i class="sw" style="background:${COLORS['ask me']}"></i>Orange (Ask Me)</span>
-        <span><i class="sw" style="background:${COLORS.busy}"></i>Red (Busy / Do Not Disturb)</span>
-        <span><i class="sw" style="background:#3a3a44"></i>Unknown</span>
-        <span>· Hover a bar for dates</span>
-      </div>
-    </div>
-    <div id="removedTop" hidden>
-      <div class="controls">
-        <select id="rWhen"><option value="0">Any time</option><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
-        <label><input type="checkbox" id="rMine"> Only removed by Status Report</label>
-        <input type="text" id="rq" placeholder="Search name"></div>
-      <div class="sub" style="margin:8px 0 0">From VRCX's Friend Log: everyone who stopped being your friend (whether you or they removed it) and isn't a friend again. To undo, send a friend request; they have to accept it.</div>
-    </div>
+    <span><button class="btn" data-act="refresh">Refresh</button> <button class="btn" data-act="close">Close</button></span>
   </div>
-  <div class="body" id="list"><div class="msg">Loading...</div></div>
-  <div class="bar" id="cBar">
-    <span id="cCount" class="muted"></span>
-    <span><button class="btn" data-act="selall">Select all</button> <button class="btn" data-act="selnone">Select none</button>
-    <button class="btn danger" data-act="unfriend">Unfriend selected...</button></span>
+  <div class="main">
+    <aside class="filters" id="filters">
+      <div class="fhead"><b>Filters</b><button class="link" data-act="reset">Reset all</button></div>
+      <input type="text" id="q" placeholder="Search name">
+      <div class="fsec"><h4>Status</h4><div class="slist" id="chips"></div></div>
+      <div class="fsec"><h4>Status unchanged for <span style="text-transform:none;letter-spacing:0">(months)</span></h4>
+        <div class="seg" data-for="same" style="--cols:5"><button data-v="0">Any</button><button data-v="1">1+</button><button data-v="3">3+</button><button data-v="6">6+</button><button data-v="12">12+</button></div><input type="hidden" id="same" value="0"></div>
+      <div class="fsec off" id="offRow"><h4><label><input type="checkbox" id="offOn"> Not online for</label><span id="offLabel"></span></h4>
+        <div class="range"><div class="track"></div><div class="fill" id="offFill"></div>
+          <input type="range" id="offMin" min="1" max="12" step="1" value="1">
+          <input type="range" id="offMax" min="1" max="12" step="1" value="12"></div>
+        <div class="ticks">${[1, 3, 6, 9, 12].map((m) => `<span style="left:calc(8px + ${(m - 1) / 11} * (100% - 16px))">${m === 12 ? '12+' : m}</span>`).join('')}</div>
+      </div>
+      <div class="fsec"><h4>Time together</h4>
+        <div class="seg" data-for="together"><button data-v="">Any</button><button data-v="0">Never met</button><button data-v="1">Under 1 h</button><button data-v="10">Under 10 h</button></div><input type="hidden" id="together" value=""></div>
+      <div class="fsec" id="skipRow"><h4>Protection</h4>
+        <label class="opt"><input type="checkbox" id="skipFav" checked> Never select favorites</label>
+        <label class="opt"><input type="checkbox" id="skipOnline" checked> Never select anyone online now</label>
+      </div>
+      <div class="fsec" id="legend" hidden><h4>Colours</h4><div class="legend">
+        <span><i class="sw" style="background:${COLORS['join me']}"></i> Blue · Join Me</span>
+        <span><i class="sw" style="background:${COLORS.active}"></i> Green · Online</span>
+        <span><i class="sw" style="background:${COLORS['ask me']}"></i> Orange · Ask Me</span>
+        <span><i class="sw" style="background:${COLORS.busy}"></i> Red · Do Not Disturb</span>
+        <span><i class="sw" style="background:#3a3a44"></i> Unknown</span>
+        <span class="muted">Hover a bar for dates</span></div></div>
+    </aside>
+    <aside class="filters" id="removedTop" hidden>
+      <div class="fhead"><b>Filters</b></div>
+      <input type="text" id="rq" placeholder="Search name">
+      <div class="fsec"><h4>Removed</h4><div class="seg" data-for="rWhen"><button data-v="0">Any time</button><button data-v="1">24 h</button><button data-v="7">7 days</button><button data-v="30">30 days</button></div><input type="hidden" id="rWhen" value="0"></div>
+      <div class="fsec"><h4>Removed by</h4><label class="opt"><input type="checkbox" id="rMine"> Only Status Report</label></div>
+      <div class="fsec"><p class="muted" style="font-size:12.5px;margin:0">From VRCX's Friend Log: everyone who stopped being your friend (you or they removed it) and isn't a friend again. To undo, send a friend request; they have to accept it.</p></div>
+    </aside>
+    <section class="content">
+      <div id="reportTop"><div class="stats" id="stats"></div><div class="pills" id="pills"></div></div>
+      <div class="body" id="list"><div class="msg">Loading...</div></div>
+      <div class="bar" id="cBar">
+        <span id="cCount" class="muted"></span>
+        <span><button class="btn" data-act="selall">Select all</button> <button class="btn" data-act="selnone">Select none</button>
+        <button class="btn danger" data-act="unfriend">Unfriend selected...</button></span>
+      </div>
+    </section>
   </div>
   <div class="modal" id="modal"><div class="box" id="box"></div></div>
   <div class="tip" id="tip"></div>
@@ -331,6 +399,7 @@ input[type=checkbox]{accent-color:var(--danger)}
         if (!running) selected.clear(); // each tab starts with nobody selected
         root.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
         $('#reportTop').hidden = t === 'removed';
+        $('#filters').hidden = t === 'removed';
         $('#removedTop').hidden = t !== 'removed';
         $('#skipRow').hidden = t !== 'report';
         $('#legend').hidden = t !== 'timeline';
@@ -374,7 +443,7 @@ input[type=checkbox]{accent-color:var(--danger)}
     }
     async function reAdd(r, btn) {
         if (!window.webApiService?.execute) return;
-        modal(`<h3>Send a friend request to <span class="nm">${esc(r.name)}</span>?</h3><p>They'll get a normal friend request and have to accept it before you're friends again.</p>
+        modal(`<h3>Send a friend request to ${esc(r.name)}?</h3><p>They'll get a normal friend request and have to accept it before you're friends again.</p>
             <div class="actions"><button class="btn" id="no">Cancel</button><button class="btn" id="yes">Send request</button></div>`);
         const ok = await new Promise((res) => { $('#no').onclick = () => res(false); $('#yes').onclick = () => res(true); });
         closeModal();
@@ -476,10 +545,10 @@ input[type=checkbox]{accent-color:var(--danger)}
     // ---------- report tab ----------
     function drawStats() {
         const stats = [
-            [F.filter((f) => f.status === 'ask me').length, 'orange (Ask Me)', () => { filter = 'ask me'; $('#seen').value = '0'; }],
-            [F.filter((f) => f.status === 'busy').length, 'red (Do Not Disturb)', () => { filter = 'busy'; $('#seen').value = '0'; }],
-            [F.filter((f) => f.seenMs > 6 * MONTH).length, 'not online 6+ months', () => { filter = 'all'; $('#seen').value = '6'; }],
-            [F.filter((f) => f.seenMs > 12 * MONTH).length, 'not online 12+ months', () => { filter = 'all'; $('#seen').value = '12'; }],
+            [F.filter((f) => f.status === 'ask me').length, 'orange (Ask Me)', () => { filter = 'ask me'; setOffline(null); }],
+            [F.filter((f) => f.status === 'busy').length, 'red (Do Not Disturb)', () => { filter = 'busy'; setOffline(null); }],
+            [F.filter((f) => f.seenMs > 6 * MONTH).length, 'not online 6+ months', () => { filter = 'all'; setOffline(6, 12); }],
+            [F.filter((f) => f.seenMs > 12 * MONTH).length, 'not online 12+ months', () => { filter = 'all'; setOffline(12, 12); }],
         ];
         const box = $('#stats'); box.innerHTML = '';
         for (const [n, label, fn] of stats) {
@@ -497,12 +566,51 @@ input[type=checkbox]{accent-color:var(--danger)}
             const n = base.filter((f) => matchesFilter(f, s)).length;
             if (s === 'unknown' && !n && filter !== 'unknown') continue; // only show Unknown when there is any
             const b = document.createElement('button');
-            b.className = 'chip' + (filter === s ? ' on' : '');
-            b.innerHTML = (s !== 'all' ? `<span class="dot" style="background:${COLORS[s]};width:8px;height:8px;margin-right:5px"></span>` : '') + `${esc(FILTER_LABEL[s])} (${n})`;
-            b.title = STATUS_NAME[s] || '';
+            b.className = 'sitem' + (filter === s ? ' on' : '');
+            b.innerHTML = (s !== 'all' ? `<span class="dot" style="background:${COLORS[s]}"></span>` : '<span class="dot" style="background:none;border:1px solid var(--muted)"></span>')
+                + `${esc(FILTER_LABEL[s])}${STATUS_NAME[s] ? ` <small>${esc(STATUS_NAME[s])}</small>` : ''}<span class="n">${n}</span>`;
             b.onclick = () => { filter = s; drawChips(); draw(); refresh(true); };
             c.appendChild(b);
         }
+        syncSegs();
+        drawPills();
+    }
+    // segmented buttons: each group stores its value in a hidden input
+    function syncSegs() {
+        root.querySelectorAll('.seg').forEach((g) => {
+            const v = $('#' + g.dataset.for).value;
+            g.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+        });
+    }
+    function setSeg(id, v) { $('#' + id).value = v; syncSegs(); $('#' + id).onchange?.(); }
+    // the filters that are on, as removable pills above the list
+    function drawPills() {
+        const pills = [];
+        if (filter !== 'all') pills.push([`Status: ${FILTER_LABEL[filter]}`, () => { filter = 'all'; }]);
+        if (sameMonths()) pills.push([`Same status ${sameMonths()}+ months`, () => { $('#same').value = '0'; }]);
+        const off = offlineRange();
+        if (off) pills.push([`Not online for ${offlineText(off)}`, () => setOffline(null)]);
+        const tg = togetherMax();
+        if (tg !== '') pills.push([tg === '0' ? 'Never met' : `Under ${tg} h together`, () => { $('#together').value = ''; }]);
+        const q = $('#q').value.trim();
+        if (q) pills.push([`Name: “${q}”`, () => { $('#q').value = ''; }]);
+        const box = $('#pills'); box.innerHTML = '';
+        if (!pills.length) { box.innerHTML = '<span class="muted">No filters. Pick some on the left to find people to remove.</span>'; return; }
+        for (const [label, clear] of pills) {
+            const el = document.createElement('span'); el.className = 'pill';
+            el.textContent = label;
+            const x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove filter';
+            x.onclick = () => { clear(); drawChips(); draw(); refresh(true); };
+            el.appendChild(x); box.appendChild(el);
+        }
+        if (pills.length > 1) {
+            const all = document.createElement('button'); all.className = 'link'; all.textContent = 'Clear all';
+            all.onclick = resetFilters; box.appendChild(all);
+        }
+    }
+    function resetFilters() {
+        filter = 'all'; $('#same').value = '0'; $('#together').value = ''; $('#q').value = '';
+        setOffline(null); drawChips(); draw(); refresh(true);
     }
     function sorter(key, dir) {
         return (a, b) => { const x = a[key], y = b[key]; return (typeof x === 'string' ? x.localeCompare(y) : (x > y) - (x < y)) * dir; };
@@ -527,20 +635,51 @@ input[type=checkbox]{accent-color:var(--danger)}
     const FILTER_LABEL = { all: 'All', active: 'Green', 'join me': 'Blue', 'ask me': 'Orange', busy: 'Red', unknown: 'Unknown' };
     const STATUS_NAME = { active: 'Online', 'join me': 'Join Me', 'ask me': 'Ask Me', busy: 'Do Not Disturb', unknown: 'No status recorded' };
     function matchesFilter(f, s) { return s === 'all' || f.status === s; }
-    const offlineMonths = () => +$('#seen').value;
+    // "Not online for" slider: null when off, else {min, max} in months; max 12 means "12+" (no upper limit)
+    function offlineRange() {
+        if (!$('#offOn').checked) return null;
+        const a = +$('#offMin').value, b = +$('#offMax').value;
+        return { min: Math.min(a, b), max: Math.max(a, b) };
+    }
+    function offlineText(r) {
+        if (r.max === 12) return `${r.min === 12 ? '12' : r.min}+ months`;
+        if (r.min === r.max) return `${r.min} month${r.min === 1 ? '' : 's'}`;
+        return `${r.min}–${r.max} months`;
+    }
+    function setOffline(min, max) { // used by the cards; null turns it off
+        $('#offOn').checked = min != null;
+        if (min != null) { $('#offMin').value = min; $('#offMax').value = max; }
+        syncSlider();
+    }
+    function syncSlider() {
+        const on = $('#offOn').checked, a = +$('#offMin').value, b = +$('#offMax').value;
+        const lo = Math.min(a, b), hi = Math.max(a, b), pc = (m) => ((m - 1) / 11) * 100;
+        $('#offFill').style.left = `calc(8px + ${pc(lo) / 100} * (100% - 16px))`;
+        $('#offFill').style.width = `calc(${(pc(hi) - pc(lo)) / 100} * (100% - 16px))`;
+        $('#offRow').classList.toggle('off', !on);
+        $('#offLabel').textContent = offlineText({ min: lo, max: hi });
+    }
     const sameMonths = () => +$('#same').value;
+    const togetherMax = () => $('#together').value; // '' = any, '0' = never met, else hours
     // search + last-online + same-status filters (everything except the status button)
     function passesOther(f) {
-        const q = $('#q').value.toLowerCase(), seen = offlineMonths(), same = sameMonths();
+        const q = $('#q').value.toLowerCase(), off = offlineRange(), same = sameMonths();
         return (!q || f.name.toLowerCase().includes(q))
-            && (!seen || f.seenMs > seen * MONTH)
-            && (!same || f.sinceMs > same * MONTH);
+            && (!off || (f.seenMs > off.min * MONTH && (off.max === 12 || f.seenMs <= (off.max + 1) * MONTH)))
+            && (!same || f.sinceMs > same * MONTH)
+            && passesTogether(f);
+    }
+    function passesTogether(f) {
+        const t = togetherMax();
+        if (t === '') return true;
+        if (t === '0') return f.joins === 0;
+        return f.togetherMs < +t * 3600000;
     }
     function reportMatches() { return F.filter((f) => matchesFilter(f, filter) && passesOther(f)); }
     // protected rows: shown, but never ticked or unfriended
     const skipped = (f) => ($('#skipFav').checked && f.fav) || ($('#skipOnline').checked && f.online);
     // only allow selecting once some filter narrows the list (never "everyone")
-    const reportFiltered = () => filter !== 'all' || offlineMonths() > 0 || sameMonths() > 0 || !!$('#q').value.trim();
+    const reportFiltered = () => filter !== 'all' || !!offlineRange() || sameMonths() > 0 || togetherMax() !== '' || !!$('#q').value.trim();
     function buildRow(f, selectable) {
         const r = document.createElement('div'); r.className = 'row';
         const c0 = document.createElement('div');
@@ -553,14 +692,14 @@ input[type=checkbox]{accent-color:var(--danger)}
         }
         r.appendChild(c0);
         r.appendChild(nameCell(f));
-        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>`);
+        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>${togetherCells(f)}`);
         return r;
     }
     function renderReport() {
         const rows = reportMatches().sort(sorter(sortKey, sortDir));
         const selectable = reportFiltered();
         const L = $('#list'); L.className = 'body'; L.innerHTML = '';
-        L.appendChild(header([['name', `Name · ${rows.length} shown`], ['sinceMs', 'Status'], ['seenMs', 'Last online']],
+        L.appendChild(header([['name', `Name · ${rows.length} shown`], ['sinceMs', 'Status'], ['seenMs', 'Last online'], ['togetherMs', 'Time together'], ['joins', 'Joins']],
             sortKey, sortDir, (k) => { sortDir = sortKey === k ? -sortDir : (k === 'name' || k === 'text' ? 1 : -1); sortKey = k; renderReport(); },
             document.createElement('div')));
         const frag = document.createDocumentFragment();
@@ -572,10 +711,13 @@ input[type=checkbox]{accent-color:var(--danger)}
 
     function filterText() {
         const parts = [];
-        const seen = offlineMonths(), same = sameMonths(), q = $('#q').value.trim();
+        const off = offlineRange(), same = sameMonths(), q = $('#q').value.trim();
         if (filter !== 'all') parts.push(`status ${FILTER_LABEL[filter] || filter}`);
         if (same) parts.push(`same status for ${same}+ months`);
-        if (seen) parts.push(`not online for ${seen}+ months`);
+        const tg = togetherMax();
+        if (tg === '0') parts.push('never met');
+        else if (tg) parts.push(`under ${tg} hour${tg === '1' ? '' : 's'} together`);
+        if (off) parts.push(`not online for ${offlineText(off)}`);
         if (q) parts.push(`matching "${q}"`);
         return parts.join(' AND ');
     }
@@ -592,13 +734,13 @@ input[type=checkbox]{accent-color:var(--danger)}
         $('[data-act=unfriend]').textContent = n ? `Unfriend ${n} selected...` : 'Unfriend selected...';
     }
 
-    // ---------- 5-step confirmation ----------
+    // ---------- 4-step confirmation ----------
     function modal(html) { $('#box').innerHTML = html; $('#modal').classList.add('open'); }
     function closeModal() { $('#modal').classList.remove('open'); }
     function stepBox(step, title, body, { input, yes = 'Continue', danger = false } = {}) {
         return new Promise((resolve) => {
-            modal(`<div class="steps">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>
-                <div class="muted" style="font-size:12px">Confirmation ${step} of 5</div><h3>${title}</h3>${body}
+            modal(`<div class="steps">${[1, 2, 3, 4].map((i) => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>
+                <div class="muted" style="font-size:12px">Confirmation ${step} of 4</div><h3>${title}</h3>${body}
                 ${input ? `<input type="text" id="cIn" autocomplete="off" placeholder="${esc(input)}">` : ''}
                 <div class="actions"><button class="btn" id="no">Cancel</button><button class="btn ${danger ? 'danger' : ''}" id="yes">${yes}</button></div>`);
             const yesB = $('#yes'), inp = $('#cIn');
@@ -625,15 +767,15 @@ input[type=checkbox]{accent-color:var(--danger)}
             (recent ? `<p class="warn">${recent} of them were online in the last 30 days.</p>` : ''), { yes: 'These are right' })) return;
         if (!await stepBox(3, 'This can\'t be undone', `<p>VRChat has no "undo" for unfriending. To get anyone back you'd have to send them a new friend request and they'd have to accept it.</p>
             <p>VRCX's Friend Log will still record who was removed.</p>`, { yes: 'I understand' })) return;
-        if (!await stepBox(4, 'Type the number of people', `<p>Type <b>${n}</b> to confirm the count.</p>`, { input: String(n) })) return;
         let speed = 'normal';
         try { if (SPEEDS[localStorage.getItem('orangeReport.speed')]) speed = localStorage.getItem('orangeReport.speed'); } catch (e) { /* ignore */ }
         const eta = (k) => { const sec = n * (SPEEDS[k].ms + 400) / 1000; return sec < 90 ? `about ${Math.ceil(sec)} seconds` : `about ${Math.ceil(sec / 60)} minutes`; };
-        const final = stepBox(5, 'Final confirmation', `<p>Speed:</p><select id="speed" style="width:100%">${Object.entries(SPEEDS)
+        // last step: pick a speed and type the number of people to start
+        const final = stepBox(4, 'Final confirmation', `<p>Speed:</p><select id="speed" style="width:100%">${Object.entries(SPEEDS)
             .map(([k, v]) => `<option value="${k}" ${k === speed ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select>
             <p class="muted" id="eta"></p>
             <p>If VRChat says it's going too fast, the run pauses and slows down on its own. You can stop it at any time.</p>
-            <p>Type <b>UNFRIEND</b> to start.</p>`, { input: 'UNFRIEND', yes: `Unfriend ${n}`, danger: true });
+            <p>Type <b>${n}</b> (the number of people) to start.</p>`, { input: String(n), yes: `Unfriend ${n}`, danger: true });
         const setEta = () => { $('#eta').textContent = `${n} ${n === 1 ? 'person' : 'people'}: ${eta(speed)}.`; };
         $('#speed').onchange = () => { speed = $('#speed').value; setEta(); try { localStorage.setItem('orangeReport.speed', speed); } catch (e) { /* ignore */ } };
         setEta();
@@ -693,21 +835,24 @@ input[type=checkbox]{accent-color:var(--danger)}
     overlay.onclick = (e) => { if (e.target === overlay) hide(); };
     root.querySelector('[data-act=close]').onclick = hide;
     root.querySelector('[data-act=refresh]').onclick = () => refresh();
-    root.querySelector('[data-act=hidenames]').onclick = (e) => {
-        const on = root.querySelector('.panel').classList.toggle('hide-names');
-        e.currentTarget.classList.toggle('on', on);
-        e.currentTarget.textContent = on ? 'Names hidden' : 'Hide names';
-    };
     root.querySelector('[data-act=unfriend]').onclick = confirmAndRun;
+    root.querySelector('[data-act=reset]').onclick = resetFilters;
+    root.querySelectorAll('.seg').forEach((g) => g.querySelectorAll('button').forEach((b) => (b.onclick = () => setSeg(g.dataset.for, b.dataset.v))));
     root.querySelector('[data-act=selall]').onclick = () => { (currentRows() || []).forEach((f) => selected.add(f.id)); draw(); };
     root.querySelector('[data-act=selnone]').onclick = () => { (currentRows() || []).forEach((f) => selected.delete(f.id)); draw(); };
     root.querySelectorAll('.tab').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
     $('#q').oninput = () => { drawChips(); draw(); };
     $('#rq').oninput = () => renderRemoved();
-    $('#rWhen').onchange = () => renderRemoved();
+    $('#rWhen').onchange = () => { syncSegs(); renderRemoved(); };
     $('#rMine').onchange = () => renderRemoved();
-    $('#seen').onchange = () => { drawChips(); draw(); refresh(true); };
+    for (const id of ['#offMin', '#offMax']) {
+        $(id).oninput = () => { $('#offOn').checked = true; syncSlider(); drawChips(); draw(); };
+        $(id).onchange = () => refresh(true);
+    }
+    $('#offOn').onchange = () => { syncSlider(); drawChips(); draw(); refresh(true); };
+    syncSlider();
     $('#same').onchange = () => { drawChips(); draw(); refresh(true); };
+    $('#together').onchange = () => { drawChips(); draw(); refresh(true); };
     ['#skipFav', '#skipOnline'].forEach((s) => ($(s).onchange = () => renderReport()));
     state.key = (e) => {
         if (e.ctrlKey && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); overlay.classList.contains('open') ? hide() : show(); }
