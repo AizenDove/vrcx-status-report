@@ -120,6 +120,14 @@
                 lastTogether: last || null,
             };
         };
+        // Mutual friends: VRCX's mutual graph (Charts > Mutual Friends). For each friend VRCX has
+        // fetched, it stores their mutuals; a friend's count = how many fetched friends list them.
+        const mutualMap = new Map();
+        let mutualFetched = 0;
+        try {
+            for (const [mid, n] of await sql(`SELECT mutual_id, COUNT(*) FROM "${p}_mutual_graph_links" GROUP BY mutual_id`)) mutualMap.set(mid, Number(n) || 0);
+            mutualFetched = Number((await sql(`SELECT COUNT(DISTINCT friend_id) FROM "${p}_mutual_graph_links"`))[0]?.[0]) || 0;
+        } catch (e) { /* older VRCX without the mutual graph */ }
         const live = liveFriends();
         const now = Date.now();
         const friends = rows.map(([id, name, dbStatus, dbText, since, ev, evAt]) => {
@@ -142,6 +150,7 @@
                 fav: !!entry?.isVIP,
                 hist: hist.get(id) || [],
                 ...togetherFor(id, name, ref.displayName),
+                mutuals: Math.max(mutualMap.get(id) || 0, typeof ref.$mutualCount === 'number' ? ref.$mutualCount : 0),
             };
         });
         // people VRCX's Friend Log recorded as unfriended (by you or by them) who aren't friends again
@@ -153,7 +162,7 @@
             seenIds.add(uid);
             removed.push({ id: uid, name: String(name || uid), at: ts(at) });
         }
-        return { friends, start, removed };
+        return { friends, start, removed, mutualFetched };
     }
 
     // ======================= formatting =======================
@@ -268,7 +277,7 @@ input,select{font-size:13px;padding:5px 9px;border-radius:7px;border:1px solid v
 input[type=text]{flex:1;min-width:140px}
 input[type=checkbox]{accent-color:var(--danger)}
 .body{overflow:auto;flex:1}
-.row{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(0,1.15fr) minmax(0,1fr) minmax(0,.6fr) minmax(0,.4fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
+.row{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(0,1.15fr) minmax(0,1fr) minmax(0,.6fr) minmax(0,.4fr) minmax(0,.45fr);gap:12px;padding:7px 18px;border-top:1px solid var(--line);align-items:center}
 .row.r5{grid-template-columns:26px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
 .head{position:sticky;top:0;z-index:1;background:var(--bg);font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-top:0}
 .head div{cursor:pointer;user-select:none}
@@ -383,9 +392,11 @@ input[type=checkbox]{accent-color:var(--danger)}
         if (!quiet) $('#list').innerHTML = '<div class="msg">Loading...</div>';
         const scroll = $('#list').scrollTop;
         try {
-            ({ friends: F, start, removed: R } = await load());
+            let mutualFetched;
+            ({ friends: F, start, removed: R, mutualFetched } = await load());
             loaded = true;
-            $('#sub').textContent = `${F.length} friends` + (start ? ` · VRCX history starts ${fmtDate(start)}, so older status times are "at least"` : '');
+            $('#sub').textContent = `${F.length} friends` + (start ? ` · VRCX history starts ${fmtDate(start)}, so older status times are "at least"` : '')
+                + ` · mutuals fetched for ${mutualFetched} of ${F.length} friends` + (mutualFetched < F.length * 0.9 ? ' (run Charts → Mutual Friends in VRCX to fetch the rest)' : '');
             drawStats(); drawChips(); draw();
             if (quiet) $('#list').scrollTop = scroll;
         } catch (e) {
@@ -678,8 +689,8 @@ input[type=checkbox]{accent-color:var(--danger)}
     function reportMatches() { return F.filter((f) => matchesFilter(f, filter) && passesOther(f)); }
     // protected rows: shown, but never ticked or unfriended
     const skipped = (f) => ($('#skipFav').checked && f.fav) || ($('#skipOnline').checked && f.online);
-    // only allow selecting once some filter narrows the list (never "everyone")
-    const reportFiltered = () => filter !== 'all' || !!offlineRange() || sameMonths() > 0 || togetherMax() !== '' || !!$('#q').value.trim();
+    // rows are always selectable in Report (protected rows excepted); nothing is ticked until you tick it
+    const reportFiltered = () => true;
     function buildRow(f, selectable) {
         const r = document.createElement('div'); r.className = 'row';
         const c0 = document.createElement('div');
@@ -692,14 +703,14 @@ input[type=checkbox]{accent-color:var(--danger)}
         }
         r.appendChild(c0);
         r.appendChild(nameCell(f));
-        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>${togetherCells(f)}`);
+        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>${togetherCells(f)}<div${f.mutuals ? '' : ' class="muted"'}>${f.mutuals}</div>`);
         return r;
     }
     function renderReport() {
         const rows = reportMatches().sort(sorter(sortKey, sortDir));
         const selectable = reportFiltered();
         const L = $('#list'); L.className = 'body'; L.innerHTML = '';
-        L.appendChild(header([['name', `Name · ${rows.length} shown`], ['sinceMs', 'Status'], ['seenMs', 'Last online'], ['togetherMs', 'Time together'], ['joins', 'Joins']],
+        L.appendChild(header([['name', `Name · ${rows.length} shown`], ['sinceMs', 'Status'], ['seenMs', 'Last online'], ['togetherMs', 'Time together'], ['joins', 'Joins'], ['mutuals', 'Mutuals']],
             sortKey, sortDir, (k) => { sortDir = sortKey === k ? -sortDir : (k === 'name' || k === 'text' ? 1 : -1); sortKey = k; renderReport(); },
             document.createElement('div')));
         const frag = document.createDocumentFragment();
@@ -719,7 +730,7 @@ input[type=checkbox]{accent-color:var(--danger)}
         else if (tg) parts.push(`under ${tg} hour${tg === '1' ? '' : 's'} together`);
         if (off) parts.push(`not online for ${offlineText(off)}`);
         if (q) parts.push(`matching "${q}"`);
-        return parts.join(' AND ');
+        return parts.join(' AND ') || 'no filters (everyone shown)';
     }
     // rows the selection bar acts on: whatever the current tab shows (null = no filter yet)
     function currentRows() {
@@ -729,7 +740,7 @@ input[type=checkbox]{accent-color:var(--danger)}
     function chosen() { return (currentRows() || []).filter((f) => selected.has(f.id)); }
     function updateCount() {
         const m = currentRows(), n = chosen().length;
-        $('#cCount').textContent = m ? `${n} of ${m.length} selected` : 'Pick a status, a month filter or a search to select people';
+        $('#cCount').textContent = m ? `${n} of ${m.length} selected` : '';
         $('[data-act=unfriend]').disabled = !n || running;
         $('[data-act=unfriend]').textContent = n ? `Unfriend ${n} selected...` : 'Unfriend selected...';
     }

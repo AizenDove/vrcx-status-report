@@ -86,6 +86,7 @@ VRCX loads a file called `custom.js` from its data folder at startup and runs it
 | Status changes, online/offline events, unfriend log | VRCX's local database (`%AppData%\VRCX\VRCX.sqlite3`), read-only `SELECT` queries |
 | Current status, online state, last login, favorites | VRCX's live friend list (already loaded from VRChat by VRCX) |
 | Time together, joins | VRCX's game log (`gamelog_join_leave`), the same data VRCX uses for a profile's time spent and join count |
+| Mutuals | VRCX's mutual friends graph (*Charts → Mutual Friends*), counted the same way as the *Mutual friends* column in VRCX's friend list |
 
 The script only talks to VRChat for the two actions you explicitly confirm: **unfriending** and **sending a friend request**. Both go through VRCX's own request service, using your existing VRCX login. The script doesn't read or store passwords or tokens.
 
@@ -156,12 +157,13 @@ The panel fills the VRCX window. All filters live in the **Filters** sidebar on 
 | Last online | *Online now*, *Last online 3 months ago*, or *Not seen online since …* |
 | Time together | Total time you've spent in the same instance, e.g. *8h 7m*, or *Never met*. Hover for the last time you were together. |
 | Joins | How many different instances you've been in together |
+| Mutuals | How many of your friends are also their friends. The header line shows how many friends VRCX has fetched mutuals for; run *Charts → Mutual Friends* in VRCX to fetch everyone. |
 
 Click a column header to sort. Sorting by **Status** puts the people who have had the same status longest at the top.
 
 #### Unfriending
 
-1. Pick at least one filter (a status, a month filter or a search). Until you do, rows have no checkboxes, so it can never select everyone.
+1. Filter the list down to the people you want (or stay on **All** to pick from everyone).
 2. Nobody is ticked to start, and switching tabs clears the selection. **Tick the people to remove**, or use **Select all** to tick everyone shown, then untick anyone to keep. **Select none** clears it.
 3. Click **Unfriend N selected…** and go through the confirmations:
    1. Summary of the filter and count
@@ -202,7 +204,6 @@ In VRChat, a status is a setting that **stays set while someone is offline**. Th
 Unfriending in VRChat is **permanent**: the only way back is a new friend request that the other person accepts. The script is built around that:
 
 - **Opt-in selection:** nobody is ticked until you tick them.
-- **Never selects everyone:** a filter is required before anything can be ticked.
 - **Favorites and anyone online now are protected** by default and can't be ticked.
 - **4 separate confirmations**, the last one requiring you to type the exact number of people.
 - **Rate-limit aware:** choose *Fast* (no pause, like VRCX's built-in Bulk Unfriend), *Normal* (1 s, default) or *Careful* (4 s). If VRChat replies "too many requests", the run pauses, retries and slows down automatically.
@@ -257,7 +258,8 @@ These only use VRCX's database, so they don't know who is online right now.
 |---|---|
 | No **Status Report** in the sidebar | Restart VRCX. If there's still no entry, a small **Status report** button appears bottom-right instead; the panel works the same. Check the file is named exactly `custom.js` in `%AppData%\VRCX`. |
 | Panel says *Could not read VRCX data* | VRCX hasn't finished loading or you're logged out. Log in, wait a moment, then press **Refresh**. |
-| No checkboxes in the list | Pick a status, a month filter or a search first. Favorites and online friends show a dash while the *Never select* options are on. |
+| A row has a dash instead of a checkbox | It's a favorite or someone online now, protected by the *Never select* options. Untick those options to allow selecting them. |
+| Mutuals are mostly 0 | VRCX hasn't fetched the mutual friends graph for most friends yet. Open *Charts → Mutual Friends* in VRCX and fetch, then press **Refresh**. |
 | Clicking a name opens the browser instead of VRCX's profile | VRCX's internals changed; the browser link is a fallback and still works. |
 | *Can't unfriend from here* | This VRCX version doesn't expose its request service to scripts. Report, Timeline and Removed still work. |
 | Unfriending pauses with a countdown | VRChat asked for fewer requests. Wait; it resumes and slows down by itself. |
