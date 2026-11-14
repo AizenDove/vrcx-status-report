@@ -83,7 +83,7 @@ VRCX loads a file called `custom.js` from its data folder at startup and runs it
 
 | Data | Source |
 |---|---|
-| Status changes, online/offline events, unfriend log | VRCX's local database (`%AppData%\VRCX\VRCX.sqlite3`), read-only `SELECT` queries |
+| Status changes, online/offline events, unfriend log | VRCX's local database (`%AppData%\VRCX\VRCX.sqlite3`), read with `SELECT` queries. The only write: after an unfriend, the same Friend Log entry VRCX itself would add (see Safety) |
 | Current status, online state, last login, favorites | VRCX's live friend list (already loaded from VRChat by VRCX) |
 | Time together, joins | VRCX's game log (`gamelog_join_leave`), the same data VRCX uses for a profile's time spent and join count |
 | Mutuals | VRCX's mutual friends graph (*Charts → Mutual Friends*), counted the same way as the *Mutual friends* column in VRCX's friend list |
@@ -208,7 +208,7 @@ Unfriending in VRChat is **permanent**: the only way back is a new friend reques
 - **4 separate confirmations**, the last one requiring you to type the exact number of people.
 - **Rate-limit aware:** choose *Fast* (no pause, like VRCX's built-in Bulk Unfriend), *Normal* (1 s, default) or *Careful* (4 s). If VRChat replies "too many requests", the run pauses, retries and slows down automatically.
 - **Stop** at any time. Friends already removed stay removed; the rest are untouched.
-- Every removal is logged in VRCX's Friend Log and listed in the **Removed** tab.
+- Every removal is logged in VRCX's Friend Log straight away, exactly as VRCX logs an unfriend it notices: an `Unfriend` entry in the friend log history, and the person is taken off VRCX's current friend log and friend list. They leave **Report** and show up in **Removed** at once, with no VRCX restart. (Without this, VRCX would only notice on its next full friend-list reload, usually a restart.)
 
 VRChat doesn't publish its API limits and does monitor unusual account activity. For a first run, try **one** person and check they're gone before doing a large batch. You use the unfriend feature at your own risk.
 

@@ -801,6 +801,28 @@ input[type=checkbox]{accent-color:var(--danger)}
         });
         return res.status;
     }
+    // VRCX only notices an unfriend made outside its own buttons when it next reloads the whole
+    // friend list (usually a restart). Until then its Friend Log still lists them as friends, so
+    // they'd stay in Report and be missing from Removed. Record it now, the same way VRCX does:
+    // an 'Unfriend' row in the friend log history, removed from the current friend log and the
+    // live friend list. Skipped if VRCX already logged it.
+    let prefix = null;
+    async function recordUnfriend(f) {
+        try {
+            prefix ||= await pickPrefix();
+            const st = findStore((s) => s.friends instanceof Map && s.friendLog instanceof Map);
+            const fl = st?.friendLog;
+            if (fl && !fl.has(f.id)) return; // VRCX already handled it
+            const entry = { created_at: new Date().toJSON(), type: 'Unfriend', userId: f.id, displayName: fl?.get(f.id)?.displayName || f.name };
+            const run = (q, args) => (window.sqliteService?.executeNonQuery ? sqliteService.executeNonQuery(q, args) : SQLite.ExecuteNonQuery(q, args));
+            await run(`INSERT OR IGNORE INTO "${prefix}_friend_log_history" (created_at, type, user_id, display_name) VALUES (@created_at, @type, @user_id, @display_name)`,
+                { '@created_at': entry.created_at, '@type': entry.type, '@user_id': entry.userId, '@display_name': entry.displayName });
+            await run(`DELETE FROM "${prefix}_friend_log_current" WHERE user_id = @user_id`, { '@user_id': f.id });
+            fl?.delete(f.id);
+            try { st.friendLogTable?.data?.push(entry); } catch (e) { /* ignore */ }
+            try { st.deleteFriend?.(f.id); } catch (e) { /* ignore */ }
+        } catch (e) { console.warn('[orange-report] could not record unfriend in VRCX', f.id, e); }
+    }
     async function runUnfriend(list, delay) {
         running = true; updateCount();
         let stop = false, done = 0, failed = 0;
@@ -823,8 +845,8 @@ input[type=checkbox]{accent-color:var(--danger)}
                 for (let t = wait; t > 0 && !stop; t -= 1000) { $('#pt').textContent = `Paused by VRChat rate limit: resuming in ${t / 1000} s`; await sleep(1000); }
             }
             if (stop && status === 429) break;
-            if (status === 200) { done++; removed.push({ id: f.id, name: f.name, at: new Date().toISOString() }); log(`Removed ${f.name}`); console.log(`[orange-report] Unfriended ${f.name} (${f.id})`); }
-            else if (status === 404) { log(`${f.name}: already not a friend`); }
+            if (status === 200) { done++; removed.push({ id: f.id, name: f.name, at: new Date().toISOString() }); await recordUnfriend(f); log(`Removed ${f.name}`); console.log(`[orange-report] Unfriended ${f.name} (${f.id})`); }
+            else if (status === 404) { await recordUnfriend(f); log(`${f.name}: already not a friend`); }
             else { failed++; log(`${f.name}: failed (${status})`); if (status === 401) { stop = true; log('Not logged in - stopped.'); } }
             $('#pg').style.width = `${((i + 1) / list.length) * 100}%`;
             if (i < list.length - 1 && !stop && delay) await sleep(delay + Math.random() * delay * 0.25);
@@ -838,7 +860,7 @@ input[type=checkbox]{accent-color:var(--danger)}
         F = F.filter((f) => !gone.has(f.id));
         $('#pt').textContent = `${stop ? 'Stopped' : 'Finished'}: ${done} removed${failed ? `, ${failed} failed` : ''}.`;
         $('#stopB').outerHTML = '<button class="btn" id="okB">Close</button>';
-        $('#okB').onclick = () => { closeModal(); drawStats(); drawChips(); draw(); };
+        $('#okB').onclick = () => { closeModal(); drawStats(); drawChips(); draw(); refresh(true); };
     }
 
     // ---------- wiring ----------
