@@ -4,6 +4,9 @@ A friends-list cleanup tool that runs **inside [VRCX](https://github.com/vrcx-te
 
 Find friends who have sat on **Orange (Ask Me)** or **Red (Do Not Disturb)** for months, or who haven't been online in a long time, and remove them in bulk, with protections against removing the wrong people and a record of everyone removed.
 
+> [!CAUTION]
+> **All data comes strictly from VRCX.** Status durations, last-online times, time together, joins, mutuals and the removed list are all read from VRCX's own local records. VRCX only records what it sees while it is running and logged in, so if your VRCX history is short, has gaps, or was reset, these numbers can be inaccurate (for example, someone may have been on a status longer than shown, or been online while VRCX was closed). Check people before removing them. Unfriending is permanent. **Use this tool at your own risk.**
+
 ![Status Report panel inside VRCX](docs/screenshots/report.png)
 
 > **Not affiliated with VRChat or the VRCX team.** This is a community script that uses VRCX's custom-script support. Unfriending is permanent; read [Safety](#safety) before unfriending anyone.
@@ -35,7 +38,7 @@ The panel has three tabs:
 
 | Tab | What it does |
 |---|---|
-| **Report** | Lists every friend with the status they have set, how long it has stayed the same, and when they were last online. Filter by status, by **same status for** 1+ / 3+ / 6+ / 12+ months and with a **not online for** slider (any range from 1 to 12+ months), then tick people and unfriend them. |
+| **Report** | Lists every friend with the status they have set, how long it has stayed the same, and when they were last online. Filter by status, and with two month sliders, **status unchanged for** and **not online for** (any range from 1 to 12+ months each), then tick people and unfriend them. |
 | **Timeline** | One coloured bar per friend showing their status history over time. Hover for exact dates; a *Most of the time* column sums each person up (e.g. *Orange 71% · Green 29%*). |
 | **Removed** | Everyone who is no longer your friend, taken from VRCX's Friend Log, with a **Send friend request** button to undo a removal. |
 
@@ -143,7 +146,7 @@ The panel fills the VRCX window. All filters live in the **Filters** sidebar on 
 |---|---|
 | Search | Matches display names |
 | Status | All · Blue · Green · Orange · Red, with counts. *Unknown* also appears if VRCX has never recorded a status for some friends. Counts follow the other filters. |
-| Status unchanged for | Any, or 1+ / 3+ / 6+ / 12+ months |
+| Status unchanged for | Same slider as below: tick the box, then drag the handles, e.g. *3–6 months* or *12+ months*. Unticked means any. |
 | Not online for | Tick the box, then drag the two handles to set a range from **1** to **12+** months, e.g. *3–6 months* or *6+ months*. With the right handle at 12+ there's no upper limit. Unticked means any time. |
 | Time together | Any, Never met, Under 1 h or Under 10 h |
 | Protection: Never select favorites / anyone online now | On by default. Those people still appear in the list, but with a dash instead of a checkbox. |

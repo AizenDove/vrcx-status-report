@@ -259,7 +259,7 @@
 .stat:hover{border-color:var(--muted)}
 .stat b{font-size:20px}.stat span{color:var(--muted);font-size:12px}
 .controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.fsec.off .range,.fsec.off .ticks,.fsec.off #offLabel{opacity:.35}
+.fsec.off .range,.fsec.off .ticks,.fsec.off .rlabel{opacity:.35}
 .range{position:relative;width:100%;height:22px}
 .range .track,.range .fill{position:absolute;top:9px;height:4px;border-radius:2px}
 .range .track{left:0;right:0;background:var(--line)}
@@ -269,7 +269,7 @@
 .range input::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:16px;height:16px;margin-top:3px;border-radius:50%;background:var(--fg);border:2px solid var(--bg);box-shadow:0 0 0 1px var(--line);cursor:pointer}
 .ticks{position:relative;width:100%;height:12px;font-size:10px;color:var(--muted)}
 .ticks span{position:absolute;transform:translateX(-50%)}
-#offLabel{color:var(--fg);text-transform:none;letter-spacing:0;font-size:12.5px}
+.rlabel{color:var(--fg);text-transform:none;letter-spacing:0;font-size:12.5px}
 .controls label{color:var(--muted);font-size:12.5px;display:flex;gap:6px;align-items:center}
 .chip{border:1px solid var(--line);background:var(--chip);color:var(--fg);border-radius:999px;padding:4px 11px;cursor:pointer;font-size:12.5px}
 .chip.on{background:var(--fg);color:var(--bg)}
@@ -325,14 +325,12 @@ input[type=checkbox]{accent-color:var(--danger)}
       <div class="fhead"><b>Filters</b><button class="link" data-act="reset">Reset all</button></div>
       <input type="text" id="q" placeholder="Search name">
       <div class="fsec"><h4>Status</h4><div class="slist" id="chips"></div></div>
-      <div class="fsec"><h4>Status unchanged for <span style="text-transform:none;letter-spacing:0">(months)</span></h4>
-        <div class="seg" data-for="same" style="--cols:5"><button data-v="0">Any</button><button data-v="1">1+</button><button data-v="3">3+</button><button data-v="6">6+</button><button data-v="12">12+</button></div><input type="hidden" id="same" value="0"></div>
-      <div class="fsec off" id="offRow"><h4><label><input type="checkbox" id="offOn"> Not online for</label><span id="offLabel"></span></h4>
-        <div class="range"><div class="track"></div><div class="fill" id="offFill"></div>
-          <input type="range" id="offMin" min="1" max="12" step="1" value="1">
-          <input type="range" id="offMax" min="1" max="12" step="1" value="12"></div>
+      ${['same', 'off'].map((k) => `<div class="fsec off" id="${k}Row"><h4><label><input type="checkbox" id="${k}On"> ${k === 'same' ? 'Status unchanged for' : 'Not online for'}</label><span class="rlabel" id="${k}Label"></span></h4>
+        <div class="range"><div class="track"></div><div class="fill" id="${k}Fill"></div>
+          <input type="range" id="${k}Min" min="1" max="12" step="1" value="1">
+          <input type="range" id="${k}Max" min="1" max="12" step="1" value="12"></div>
         <div class="ticks">${[1, 3, 6, 9, 12].map((m) => `<span style="left:calc(8px + ${(m - 1) / 11} * (100% - 16px))">${m === 12 ? '12+' : m}</span>`).join('')}</div>
-      </div>
+      </div>`).join('\n')}
       <div class="fsec"><h4>Time together</h4>
         <div class="seg" data-for="together"><button data-v="">Any</button><button data-v="0">Never met</button><button data-v="1">Under 1 h</button><button data-v="10">Under 10 h</button></div><input type="hidden" id="together" value=""></div>
       <div class="fsec" id="skipRow"><h4>Protection</h4>
@@ -598,7 +596,8 @@ input[type=checkbox]{accent-color:var(--danger)}
     function drawPills() {
         const pills = [];
         if (filter !== 'all') pills.push([`Status: ${FILTER_LABEL[filter]}`, () => { filter = 'all'; }]);
-        if (sameMonths()) pills.push([`Same status ${sameMonths()}+ months`, () => { $('#same').value = '0'; }]);
+        const same = sameRange();
+        if (same) pills.push([`Same status for ${offlineText(same)}`, () => setRange('same', null)]);
         const off = offlineRange();
         if (off) pills.push([`Not online for ${offlineText(off)}`, () => setOffline(null)]);
         const tg = togetherMax();
@@ -620,8 +619,8 @@ input[type=checkbox]{accent-color:var(--danger)}
         }
     }
     function resetFilters() {
-        filter = 'all'; $('#same').value = '0'; $('#together').value = ''; $('#q').value = '';
-        setOffline(null); drawChips(); draw(); refresh(true);
+        filter = 'all'; $('#together').value = ''; $('#q').value = '';
+        setOffline(null); setRange('same', null); drawChips(); draw(); refresh(true);
     }
     function sorter(key, dir) {
         return (a, b) => { const x = a[key], y = b[key]; return (typeof x === 'string' ? x.localeCompare(y) : (x > y) - (x < y)) * dir; };
@@ -646,38 +645,42 @@ input[type=checkbox]{accent-color:var(--danger)}
     const FILTER_LABEL = { all: 'All', active: 'Green', 'join me': 'Blue', 'ask me': 'Orange', busy: 'Red', unknown: 'Unknown' };
     const STATUS_NAME = { active: 'Online', 'join me': 'Join Me', 'ask me': 'Ask Me', busy: 'Do Not Disturb', unknown: 'No status recorded' };
     function matchesFilter(f, s) { return s === 'all' || f.status === s; }
-    // "Not online for" slider: null when off, else {min, max} in months; max 12 means "12+" (no upper limit)
-    function offlineRange() {
-        if (!$('#offOn').checked) return null;
-        const a = +$('#offMin').value, b = +$('#offMax').value;
+    // Month sliders ('off' = not online for, 'same' = status unchanged for):
+    // null when off, else {min, max} in months; max 12 means "12+" (no upper limit)
+    function monthRange(k) {
+        if (!$(`#${k}On`).checked) return null;
+        const a = +$(`#${k}Min`).value, b = +$(`#${k}Max`).value;
         return { min: Math.min(a, b), max: Math.max(a, b) };
     }
+    const inRange = (ms, r) => !r || (ms > r.min * MONTH && (r.max === 12 || ms <= (r.max + 1) * MONTH));
+    const offlineRange = () => monthRange('off');
+    const sameRange = () => monthRange('same');
     function offlineText(r) {
         if (r.max === 12) return `${r.min === 12 ? '12' : r.min}+ months`;
         if (r.min === r.max) return `${r.min} month${r.min === 1 ? '' : 's'}`;
         return `${r.min}–${r.max} months`;
     }
-    function setOffline(min, max) { // used by the cards; null turns it off
-        $('#offOn').checked = min != null;
-        if (min != null) { $('#offMin').value = min; $('#offMax').value = max; }
-        syncSlider();
+    function setRange(k, min, max) { // null turns it off
+        $(`#${k}On`).checked = min != null;
+        if (min != null) { $(`#${k}Min`).value = min; $(`#${k}Max`).value = max; }
+        syncSlider(k);
     }
-    function syncSlider() {
-        const on = $('#offOn').checked, a = +$('#offMin').value, b = +$('#offMax').value;
+    const setOffline = (min, max) => setRange('off', min, max); // used by the cards
+    function syncSlider(k) {
+        const on = $(`#${k}On`).checked, a = +$(`#${k}Min`).value, b = +$(`#${k}Max`).value;
         const lo = Math.min(a, b), hi = Math.max(a, b), pc = (m) => ((m - 1) / 11) * 100;
-        $('#offFill').style.left = `calc(8px + ${pc(lo) / 100} * (100% - 16px))`;
-        $('#offFill').style.width = `calc(${(pc(hi) - pc(lo)) / 100} * (100% - 16px))`;
-        $('#offRow').classList.toggle('off', !on);
-        $('#offLabel').textContent = offlineText({ min: lo, max: hi });
+        $(`#${k}Fill`).style.left = `calc(8px + ${pc(lo) / 100} * (100% - 16px))`;
+        $(`#${k}Fill`).style.width = `calc(${(pc(hi) - pc(lo)) / 100} * (100% - 16px))`;
+        $(`#${k}Row`).classList.toggle('off', !on);
+        $(`#${k}Label`).textContent = offlineText({ min: lo, max: hi });
     }
-    const sameMonths = () => +$('#same').value;
     const togetherMax = () => $('#together').value; // '' = any, '0' = never met, else hours
     // search + last-online + same-status filters (everything except the status button)
     function passesOther(f) {
-        const q = $('#q').value.toLowerCase(), off = offlineRange(), same = sameMonths();
+        const q = $('#q').value.toLowerCase(), off = offlineRange(), same = sameRange();
         return (!q || f.name.toLowerCase().includes(q))
-            && (!off || (f.seenMs > off.min * MONTH && (off.max === 12 || f.seenMs <= (off.max + 1) * MONTH)))
-            && (!same || f.sinceMs > same * MONTH)
+            && inRange(f.seenMs, off)
+            && inRange(f.sinceMs, same)
             && passesTogether(f);
     }
     function passesTogether(f) {
@@ -722,9 +725,9 @@ input[type=checkbox]{accent-color:var(--danger)}
 
     function filterText() {
         const parts = [];
-        const off = offlineRange(), same = sameMonths(), q = $('#q').value.trim();
+        const off = offlineRange(), same = sameRange(), q = $('#q').value.trim();
         if (filter !== 'all') parts.push(`status ${FILTER_LABEL[filter] || filter}`);
-        if (same) parts.push(`same status for ${same}+ months`);
+        if (same) parts.push(`same status for ${offlineText(same)}`);
         const tg = togetherMax();
         if (tg === '0') parts.push('never met');
         else if (tg) parts.push(`under ${tg} hour${tg === '1' ? '' : 's'} together`);
@@ -878,13 +881,14 @@ input[type=checkbox]{accent-color:var(--danger)}
     $('#rq').oninput = () => renderRemoved();
     $('#rWhen').onchange = () => { syncSegs(); renderRemoved(); };
     $('#rMine').onchange = () => renderRemoved();
-    for (const id of ['#offMin', '#offMax']) {
-        $(id).oninput = () => { $('#offOn').checked = true; syncSlider(); drawChips(); draw(); };
-        $(id).onchange = () => refresh(true);
+    for (const k of ['off', 'same']) {
+        for (const id of [`#${k}Min`, `#${k}Max`]) {
+            $(id).oninput = () => { $(`#${k}On`).checked = true; syncSlider(k); drawChips(); draw(); };
+            $(id).onchange = () => refresh(true);
+        }
+        $(`#${k}On`).onchange = () => { syncSlider(k); drawChips(); draw(); refresh(true); };
+        syncSlider(k);
     }
-    $('#offOn').onchange = () => { syncSlider(); drawChips(); draw(); refresh(true); };
-    syncSlider();
-    $('#same').onchange = () => { drawChips(); draw(); refresh(true); };
     $('#together').onchange = () => { drawChips(); draw(); refresh(true); };
     ['#skipFav', '#skipOnline'].forEach((s) => ($(s).onchange = () => renderReport()));
     state.key = (e) => {
