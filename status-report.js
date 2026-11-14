@@ -9,10 +9,22 @@
  *
  * Install: copy to %AppData%\VRCX\custom.js and restart VRCX.  Shortcut: Ctrl+Shift+O.
  *
- * Reads VRCX's database with SELECT only. The only thing it ever changes is unfriending,
- * and only after the 4 confirmations. Relies on VRCX internals (SQLite.Execute,
+ * Reads VRCX's database with SELECT. The only things it ever changes are unfriending,
+ * only after the 4 confirmations, and the matching Friend Log entry VRCX itself would add.
+ * Relies on VRCX internals (SQLite.Execute,
  * window.$pinia, window.webApiService, the sidebar markup) that aren't an official API,
  * so a VRCX update may break parts of it.
+ *
+ * Copyright (C) 2026 AizenDove
+ * https://github.com/AizenDove/vrcx-status-report
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms
+ * of the GNU General Public License as published by the Free Software Foundation, either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details: https://www.gnu.org/licenses/gpl-3.0
  */
 (function () {
     'use strict';

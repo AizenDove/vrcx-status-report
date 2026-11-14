@@ -29,6 +29,7 @@ Find friends who have sat on **Orange (Ask Me)** or **Red (Do Not Disturb)** for
 - [Standalone scripts](#standalone-scripts)
 - [Privacy](#privacy)
 - [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
@@ -266,3 +267,17 @@ These only use VRCX's database, so they don't know who is online right now.
 | Clicking a name opens the browser instead of VRCX's profile | VRCX's internals changed; the browser link is a fallback and still works. |
 | *Can't unfriend from here* | This VRCX version doesn't expose its request service to scripts. Report, Timeline and Removed still work. |
 | Unfriending pauses with a countdown | VRChat asked for fewer requests. Wait; it resumes and slows down by itself. |
+
+---
+
+## License
+
+Copyright © 2026 AizenDove.
+
+Released under the [GNU General Public License v3.0](LICENSE) (GPL-3.0). In short:
+
+- **You can** use, copy, modify and share this project, including in your own projects.
+- **If you share a modified version** (or anything built on this code), you must release its full source code publicly under the same GPL-3.0 license, keep the copyright and license notices, and say what you changed.
+- **No warranty.** The software is provided as is; you use it at your own risk (see the caution at the top).
+
+This summary isn't legal advice; the [LICENSE](LICENSE) file is the actual terms.
