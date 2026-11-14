@@ -133,13 +133,17 @@
             };
         };
         // Mutual friends: VRCX's mutual graph (Charts > Mutual Friends). For each friend VRCX has
-        // fetched, it stores their mutuals; a friend's count = how many fetched friends list them.
-        const mutualMap = new Map();
-        let mutualFetched = 0;
+        // fetched, it stores that friend's full list of mutuals, so their count is exact.
+        // For friends not fetched yet, the only clue is how many fetched friends list them,
+        // which is just a lower bound (that's all VRCX's own friend-list column shows).
+        const BLANK = 'usr_00000000-0000-0000-0000-000000000000';
+        const ownList = new Map(), listedBy = new Map(), fetchedIds = new Set();
         try {
-            for (const [mid, n] of await sql(`SELECT mutual_id, COUNT(*) FROM "${p}_mutual_graph_links" GROUP BY mutual_id`)) mutualMap.set(mid, Number(n) || 0);
-            mutualFetched = Number((await sql(`SELECT COUNT(DISTINCT friend_id) FROM "${p}_mutual_graph_links"`))[0]?.[0]) || 0;
+            for (const [fid, n] of await sql(`SELECT friend_id, COUNT(*) FROM "${p}_mutual_graph_links" WHERE mutual_id != '${BLANK}' GROUP BY friend_id`)) ownList.set(fid, Number(n) || 0);
+            for (const [mid, n] of await sql(`SELECT mutual_id, COUNT(*) FROM "${p}_mutual_graph_links" GROUP BY mutual_id`)) listedBy.set(mid, Number(n) || 0);
+            for (const [fid] of await sql(`SELECT friend_id FROM "${p}_mutual_graph_friends"`)) fetchedIds.add(fid);
         } catch (e) { /* older VRCX without the mutual graph */ }
+        for (const id of ownList.keys()) fetchedIds.add(id);
         const live = liveFriends();
         const now = Date.now();
         const friends = rows.map(([id, name, dbStatus, dbText, since, ev, evAt]) => {
@@ -162,7 +166,8 @@
                 fav: !!entry?.isVIP,
                 hist: hist.get(id) || [],
                 ...togetherFor(id, name, ref.displayName),
-                mutuals: Math.max(mutualMap.get(id) || 0, typeof ref.$mutualCount === 'number' ? ref.$mutualCount : 0),
+                mutuals: fetchedIds.has(id) ? ownList.get(id) || 0 : Math.max(listedBy.get(id) || 0, typeof ref.$mutualCount === 'number' ? ref.$mutualCount : 0),
+                mutualsExact: fetchedIds.has(id),
             };
         });
         // people VRCX's Friend Log recorded as unfriended (by you or by them) who aren't friends again
@@ -174,6 +179,7 @@
             seenIds.add(uid);
             removed.push({ id: uid, name: String(name || uid), at: ts(at) });
         }
+        const mutualFetched = friends.filter((f) => f.mutualsExact).length;
         return { friends, start, removed, mutualFetched };
     }
 
@@ -718,7 +724,7 @@ input[type=checkbox]{accent-color:var(--danger)}
         }
         r.appendChild(c0);
         r.appendChild(nameCell(f));
-        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>${togetherCells(f)}<div${f.mutuals ? '' : ' class="muted"'}>${f.mutuals}</div>`);
+        r.insertAdjacentHTML('beforeend', `<div>${statusPhrase(f)}</div><div>${seenPhrase(f)}</div>${togetherCells(f)}${f.mutualsExact ? `<div>${f.mutuals}</div>` : `<div class="muted" title="Not fetched by VRCX yet${f.mutuals ? `: at least ${f.mutuals}` : ''}. Run Charts → Mutual Friends in VRCX for the real number.">${f.mutuals ? '≥ ' + f.mutuals : '?'}</div>`}`);
         return r;
     }
     function renderReport() {

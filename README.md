@@ -90,7 +90,7 @@ VRCX loads a file called `custom.js` from its data folder at startup and runs it
 | Status changes, online/offline events, unfriend log | VRCX's local database (`%AppData%\VRCX\VRCX.sqlite3`), read with `SELECT` queries. The only write: after an unfriend, the same Friend Log entry VRCX itself would add (see Safety) |
 | Current status, online state, last login, favorites | VRCX's live friend list (already loaded from VRChat by VRCX) |
 | Time together, joins | VRCX's game log (`gamelog_join_leave`), the same data VRCX uses for a profile's time spent and join count |
-| Mutuals | VRCX's mutual friends graph (*Charts → Mutual Friends*), counted the same way as the *Mutual friends* column in VRCX's friend list |
+| Mutuals | VRCX's mutual friends graph (*Charts → Mutual Friends*). For each friend VRCX has fetched, it stores their full mutual list, so the count is exact. |
 
 The script only talks to VRChat for the two actions you explicitly confirm: **unfriending** and **sending a friend request**. Both go through VRCX's own request service, using your existing VRCX login. The script doesn't read or store passwords or tokens.
 
@@ -161,7 +161,7 @@ The panel fills the VRCX window. All filters live in the **Filters** sidebar on 
 | Last online | *Online now*, *Last online 3 months ago*, or *Not seen online since …* |
 | Time together | Total time you've spent in the same instance, e.g. *8h 7m*, or *Never met*. Hover for the last time you were together. |
 | Joins | How many different instances you've been in together |
-| Mutuals | How many of your friends are also their friends. The header line shows how many friends VRCX has fetched mutuals for; run *Charts → Mutual Friends* in VRCX to fetch everyone. |
+| Mutuals | How many of your friends are also their friends. A plain number is exact. A grey **≥ N** or **?** means VRCX hasn't fetched that friend's mutuals yet, so only a minimum is known. The header line shows how many are fetched; run *Charts → Mutual Friends* in VRCX to fetch everyone. |
 
 Click a column header to sort. Sorting by **Status** puts the people who have had the same status longest at the top.
 
@@ -263,7 +263,7 @@ These only use VRCX's database, so they don't know who is online right now.
 | No **Status Report** in the sidebar | Restart VRCX. If there's still no entry, a small **Status report** button appears bottom-right instead; the panel works the same. Check the file is named exactly `custom.js` in `%AppData%\VRCX`. |
 | Panel says *Could not read VRCX data* | VRCX hasn't finished loading or you're logged out. Log in, wait a moment, then press **Refresh**. |
 | A row has a dash instead of a checkbox | It's a favorite or someone online now, protected by the *Never select* options. Untick those options to allow selecting them. |
-| Mutuals are mostly 0 | VRCX hasn't fetched the mutual friends graph for most friends yet. Open *Charts → Mutual Friends* in VRCX and fetch, then press **Refresh**. |
+| Mutuals show **?** or a small **≥ N** | VRCX hasn't fetched the mutual friends graph for most friends yet. Open *Charts → Mutual Friends* in VRCX and fetch, then press **Refresh**. |
 | Clicking a name opens the browser instead of VRCX's profile | VRCX's internals changed; the browser link is a fallback and still works. |
 | *Can't unfriend from here* | This VRCX version doesn't expose its request service to scripts. Report, Timeline and Removed still work. |
 | Unfriending pauses with a countdown | VRChat asked for fewer requests. Wait; it resumes and slows down by itself. |
