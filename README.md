@@ -82,7 +82,7 @@ Other useful combinations:
 
 ## How it works
 
-VRCX loads a file called `custom.js` from its data folder at startup and runs it inside its window. This project is that file. It reads:
+VRCX loads a file called `custom.js` from its data folder at startup and runs it inside its window. This project's `status-report.js` is installed as that file. It reads:
 
 | Data | Source |
 |---|---|
@@ -110,12 +110,12 @@ The script only talks to VRChat for the two actions you explicitly confirm: **un
    powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
 
-   This copies `custom.js` to `%AppData%\VRCX\custom.js`. If you already had a different `custom.js`, it's backed up first as `custom.js.bak-<date>`.
+   This copies `status-report.js` to `%AppData%\VRCX\custom.js`. If you already had a different `custom.js`, it's backed up first as `custom.js.bak-<date>`.
 3. **Restart VRCX.**
 
 ### Option 2: manual
 
-1. Copy `custom.js` from this repository to:
+1. Copy `status-report.js` from this repository to the path below, **renamed to `custom.js`** (VRCX only loads a file with that exact name):
 
    ```
    %AppData%\VRCX\custom.js
@@ -128,7 +128,7 @@ The script only talks to VRChat for the two actions you explicitly confirm: **un
 
 ### Updating
 
-Pull or download the latest version, run the install script again (or copy `custom.js` again), then restart VRCX.
+Pull or download the latest version, run the install script again (or copy `status-report.js` to `custom.js` again), then restart VRCX.
 
 ## Usage
 

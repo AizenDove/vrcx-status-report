@@ -3,7 +3,8 @@
     Installs (or removes) VRCX Status Report as VRCX's custom.js.
 
 .DESCRIPTION
-    Copies custom.js from this folder to %AppData%\VRCX\custom.js.
+    Copies status-report.js from this folder to %AppData%\VRCX\custom.js
+    (VRCX only loads a file with that exact name).
     If a different custom.js is already there, it is backed up first
     (custom.js.bak-<date>) so nothing you had is lost.
     Restart VRCX afterwards.
@@ -21,7 +22,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $vrcxDir = Join-Path $env:APPDATA 'VRCX'
 $target = Join-Path $vrcxDir 'custom.js'
-$source = Join-Path $PSScriptRoot 'custom.js'
+$source = Join-Path $PSScriptRoot 'status-report.js'
 $marker = 'VRCX Status Report'
 
 if (-not (Test-Path $vrcxDir)) {
@@ -38,7 +39,7 @@ if ($Uninstall) {
     exit 0
 }
 
-if (-not (Test-Path $source)) { Write-Error "custom.js not found next to this script ($source)." }
+if (-not (Test-Path $source)) { Write-Error "status-report.js not found next to this script ($source)." }
 
 if (Test-Path $target) {
     $isOurs = Select-String -Path $target -Pattern $marker -SimpleMatch -Quiet
